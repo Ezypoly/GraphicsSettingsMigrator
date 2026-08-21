@@ -2,7 +2,7 @@
 
 Windows GUI utility for backing up and moving settings between versions or PCs.
 
-## Supported applications (43)
+## Supported applications (44)
 
 The scanner only shows settings that exist on the current PC. Restore can map a
 backup to another installed version or to an editable custom target path.
@@ -31,6 +31,7 @@ backup to another installed version or to an editable custom target path.
 - Maxon ZBrush
 - Plasticity
 - Rhino
+- Grasshopper
 - SketchUp
 - Nuke
 - Mari
@@ -70,6 +71,9 @@ See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-speci
   Documents\GraphicsSettingsMigrator Rollbacks before overwrite.
 - Running graphics applications block restore.
 - Paths use portable profile tokens, so a package can be moved to another Windows user or PC.
+- Custom scripts, plug-ins, extensions, presets, brushes, materials, packages,
+  and libraries stored outside the usual preferences folder are included where
+  their locations are known.
 
 ## Rollback
 

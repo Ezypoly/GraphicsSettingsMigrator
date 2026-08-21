@@ -12,6 +12,10 @@ public sealed class DiscoveryService
     private readonly string _documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     private readonly string _publicDocuments = Environment.GetFolderPath(Environment.SpecialFolder.CommonDocuments);
     private readonly string _programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+    private readonly string _programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+    private readonly string _programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+    private readonly string _commonProgramFiles = Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles);
+    private readonly string _commonProgramFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86);
 
     public List<SettingsLocation> DiscoverExisting()
     {
@@ -21,6 +25,7 @@ public sealed class DiscoveryService
         Discover3DCoat(result);
         DiscoverPlasticity(result);
         ExtendedDiscovery.AddExisting(result, MakePortablePath);
+        CustomContentDiscovery.AddExisting(result, MakePortablePath);
         return result
             .GroupBy(x => x.Kind + "|" + x.SourcePath, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.First())
@@ -88,6 +93,8 @@ public sealed class DiscoveryService
                 Path.Combine(root, "ZStartup"));
             AddTarget(targets, "zbrush", "Maxon ZBrush", version, "Plugin settings",
                 Path.Combine(root, "ZPluginData"));
+            AddTarget(targets, "zbrush", "Maxon ZBrush", version, "Preferences",
+                Path.Combine(root, "Preferences"));
         }
 
         AddTarget(targets, "3dcoat", "3DCoat", "shared", "UserPrefs",
@@ -96,6 +103,11 @@ public sealed class DiscoveryService
             Path.Combine(_profile, ".plasticity"));
 
         ExtendedDiscovery.AddTargets(targets);
+        CustomContentDiscovery.AddTargets(targets);
+        AddTarget(targets, "3dcoat", "3DCoat", "shared", "Option presets",
+            Path.Combine(_documents, "3DCoat", "data", "OptionsPresets"));
+        AddTarget(targets, "3dcoat", "3DCoat", "shared", "Tool presets",
+            Path.Combine(_documents, "3DCoat", "data", "ToolsPresets"));
 
         return targets
             .GroupBy(x => x.Kind + "|" + x.TargetPath, StringComparer.OrdinalIgnoreCase)
@@ -145,10 +157,16 @@ public sealed class DiscoveryService
             (_documents, "%DOCUMENTS%"),
             (_roaming, "%APPDATA%"),
             (_local, "%LOCALAPPDATA%"),
-            (_profile, "%USERPROFILE%")
+            (_profile, "%USERPROFILE%"),
+            (_commonProgramFilesX86, "%COMMONPROGRAMFILES_X86%"),
+            (_commonProgramFiles, "%COMMONPROGRAMFILES%"),
+            (_programFilesX86, "%PROGRAMFILES_X86%"),
+            (_programFiles, "%PROGRAMFILES%"),
+            (_programData, "%PROGRAMDATA%")
         };
 
-        foreach (var (root, token) in roots.OrderByDescending(x => x.Item1.Length))
+        foreach (var (root, token) in roots.Where(x => !string.IsNullOrWhiteSpace(x.Item1))
+                     .OrderByDescending(x => x.Item1.Length))
         {
             if (path.Equals(root, StringComparison.OrdinalIgnoreCase))
                 return token;
@@ -167,7 +185,12 @@ public sealed class DiscoveryService
             ["%DOCUMENTS%"] = _documents,
             ["%APPDATA%"] = _roaming,
             ["%LOCALAPPDATA%"] = _local,
-            ["%USERPROFILE%"] = _profile
+            ["%USERPROFILE%"] = _profile,
+            ["%COMMONPROGRAMFILES_X86%"] = _commonProgramFilesX86,
+            ["%COMMONPROGRAMFILES%"] = _commonProgramFiles,
+            ["%PROGRAMFILES_X86%"] = _programFilesX86,
+            ["%PROGRAMFILES%"] = _programFiles,
+            ["%PROGRAMDATA%"] = _programData
         };
 
         foreach (var pair in replacements)
@@ -262,6 +285,9 @@ public sealed class DiscoveryService
             AddDirectory(result, "zbrush", "Maxon ZBrush", version,
                 "Plugin settings", Path.Combine(root.FullName, "ZPluginData"), true,
                 "Small plugin-specific user data.");
+            AddDirectory(result, "zbrush", "Maxon ZBrush", version,
+                "Preferences", Path.Combine(root.FullName, "Preferences"), true,
+                "Additional preferences and saved application state.");
         }
     }
 
@@ -274,6 +300,12 @@ public sealed class DiscoveryService
             Path.Combine(coatRoot, "UserPrefs"), true,
             "Preferences, hotkeys, UI, brushes, materials, presets, and custom tools.",
             ["UserScenes"]);
+        AddDirectory(result, "3dcoat", "3DCoat", "shared", "Option presets",
+            Path.Combine(coatRoot, "data", "OptionsPresets"), true,
+            "Additional option presets stored outside UserPrefs.");
+        AddDirectory(result, "3dcoat", "3DCoat", "shared", "Tool presets",
+            Path.Combine(coatRoot, "data", "ToolsPresets"), true,
+            "Additional tool presets stored outside UserPrefs.");
     }
 
     private void DiscoverPlasticity(List<SettingsLocation> result)
