@@ -2,13 +2,64 @@
 
 Windows GUI utility for backing up and moving settings between versions or PCs.
 
-Supported discovery rules:
+## Supported applications (43)
 
-- Adobe Photoshop, Illustrator, After Effects, Media Encoder and Camera Raw
-- Adobe Substance 3D Painter, Designer, Modeler and Sampler
-- Maxon ZBrush
+The scanner only shows settings that exist on the current PC. Restore can map a
+backup to another installed version or to an editable custom target path.
+
+### Adobe and texturing
+
+- Adobe Photoshop
+- Adobe Illustrator
+- Adobe After Effects
+- Adobe Media Encoder
+- Adobe Camera Raw
+- Adobe Lightroom Classic
+- Adobe Substance 3D Painter
+- Adobe Substance 3D Designer
+- Adobe Substance 3D Modeler
+- Adobe Substance 3D Sampler
 - 3DCoat
+
+### 3D, CAD, rendering, and game tools
+
+- Blender
+- Autodesk Maya
+- Autodesk 3ds Max
+- Cinema 4D
+- Houdini
+- Maxon ZBrush
 - Plasticity
+- Rhino
+- SketchUp
+- Nuke
+- Mari
+- Modo
+- Marmoset Toolbag
+- Marvelous Designer
+- CLO
+- KeyShot
+- Unreal Engine
+- Unity
+- Godot
+
+### 2D, painting, and design
+
+- Affinity Photo 2
+- Affinity Designer 2
+- Affinity Publisher 2
+- Krita
+- GIMP
+- Inkscape
+- CorelDRAW
+- Corel Painter
+- Clip Studio Paint
+- paint.net
+- Aseprite
+- PureRef
+- Capture One
+
+See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-specific details.
 
 ## Safety model
 
@@ -19,6 +70,10 @@ Supported discovery rules:
   Documents\GraphicsSettingsMigrator Rollbacks before overwrite.
 - Running graphics applications block restore.
 - Paths use portable profile tokens, so a package can be moved to another Windows user or PC.
+
+## Rollback
+
+Every restore creates a rollback manifest. The Rollback tab can restore overwritten files and registry settings and remove files created by that restore. Files changed again after the restore are skipped to protect newer work. Rollbacks created by older versions remain available for manual recovery.
 
 ## Build
 
