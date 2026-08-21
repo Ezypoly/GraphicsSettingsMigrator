@@ -11,7 +11,7 @@ internal static class ExtendedDiscovery
         "Autodesk 3ds Max", "Autodesk Maya", "Blender", "Capture One",
         "Cinema 4D", "Clip Studio Paint", "CLO", "Corel Painter", "CorelDRAW",
         "GIMP", "Godot", "Houdini", "Inkscape", "KeyShot", "Krita",
-        "Mari", "Marmoset Toolbag", "Marvelous Designer", "Modo", "Nuke",
+        "Grasshopper", "Mari", "Marmoset Toolbag", "Marvelous Designer", "Modo", "Nuke",
         "paint.net", "PureRef", "Rhino", "SketchUp", "Unity", "Unreal Engine"
     ];
 

@@ -10,6 +10,7 @@ uses installed-version rules to map a backup to a newer version.
 - Adobe After Effects
 - Adobe Media Encoder
 - Adobe Camera Raw
+- Adobe shared CEP/UXP extensions, color settings, and shared plug-ins
 - Adobe Lightroom Classic
 - Adobe Substance 3D Painter
 - Adobe Substance 3D Designer
@@ -27,6 +28,7 @@ uses installed-version rules to map a backup to a newer version.
 - Maxon ZBrush
 - Plasticity
 - Rhino
+- Grasshopper
 - SketchUp
 - Nuke
 - Mari
@@ -57,6 +59,14 @@ uses installed-version rules to map a backup to a newer version.
 
 ## Scope notes
 
+- The scanner includes custom scripts, plug-ins, extensions, presets, brushes,
+  materials, packages, and libraries when applications store them outside the
+  normal user-settings profile.
+- Installation-level content is included for Photoshop, Illustrator, and After
+  Effects. Restoring it under Program Files or Common Files may require running
+  the utility as administrator.
+- Native binary plug-ins can be tied to a specific application version. Review
+  the editable restore target and the Preview before copying them to a new version.
 - Project files, renders, autosaves, caches, crash dumps, and licensing data
   are intentionally excluded where their locations are known.
 - Unreal Engine project-specific settings remain inside each project's
