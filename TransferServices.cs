@@ -239,6 +239,12 @@ public sealed class RestoreService
             DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(rollbackRoot);
 
+        var rollbackManifest = new RollbackManifest
+        {
+            SourcePackage = packageRoot
+        };
+        await RollbackService.SaveManifestAsync(rollbackRoot, rollbackManifest, cancellationToken);
+
         var result = new RestoreResult { RollbackPath = rollbackRoot };
         var selectionIndex = 0;
         foreach (var selection in selections)
@@ -249,8 +255,19 @@ public sealed class RestoreService
                              selection.Entry.Product + " — " + selection.Entry.Category);
 
             var entry = selection.Entry;
-            var entryRollback = Path.Combine(rollbackRoot, entry.Id);
+            var entryRollback = BackupService.SafeChildPath(rollbackRoot, entry.Id);
             Directory.CreateDirectory(entryRollback);
+            var rollbackEntry = new RollbackEntry
+            {
+                AppId = entry.AppId,
+                Product = entry.Product,
+                SourceVersion = entry.SourceVersion,
+                Category = entry.Category,
+                Kind = entry.Kind,
+                TargetPath = selection.TargetPath,
+                BackupDirectory = entry.Id
+            };
+            rollbackManifest.Entries.Add(rollbackEntry);
 
             if (entry.Kind == SourceKind.Registry)
             {
@@ -262,6 +279,9 @@ public sealed class RestoreService
                     await File.WriteAllTextAsync(Path.Combine(entryRollback, "registry-before.json"),
                         JsonSerializer.Serialize(existing, JsonSupport.Options), cancellationToken);
                 }
+                rollbackEntry.RegistryExistedBefore = existing != null;
+                await RollbackService.SaveManifestAsync(
+                    rollbackRoot, rollbackManifest, cancellationToken);
                 var snapshot = JsonSerializer.Deserialize<RegistrySnapshot>(
                     await File.ReadAllTextAsync(source, cancellationToken), JsonSupport.Options)
                     ?? throw new InvalidDataException("The registry snapshot is invalid.");
@@ -286,10 +306,28 @@ public sealed class RestoreService
                     }
 
                     var rollbackFile = BackupService.SafeChildPath(entryRollback, file.RelativePath);
+                    var previousLastWriteUtc = File.GetLastWriteTimeUtc(destination);
                     Directory.CreateDirectory(Path.GetDirectoryName(rollbackFile)!);
                     File.Copy(destination, rollbackFile, true);
-                    File.SetLastWriteTimeUtc(rollbackFile, File.GetLastWriteTimeUtc(destination));
+                    File.SetLastWriteTimeUtc(rollbackFile, previousLastWriteUtc);
+                    rollbackEntry.Files.Add(new RollbackFile
+                    {
+                        RelativePath = file.RelativePath,
+                        ExistedBefore = true,
+                        PreviousLastWriteUtc = previousLastWriteUtc,
+                        AppliedSha256 = file.Sha256
+                    });
                 }
+                else
+                    rollbackEntry.Files.Add(new RollbackFile
+                    {
+                        RelativePath = file.RelativePath,
+                        ExistedBefore = false,
+                        AppliedSha256 = file.Sha256
+                    });
+
+                await RollbackService.SaveManifestAsync(
+                    rollbackRoot, rollbackManifest, cancellationToken);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(source, destination, overwrite);
@@ -297,6 +335,9 @@ public sealed class RestoreService
                 result.CopiedFiles++;
             }
         }
+
+        rollbackManifest.CompletedUtc = DateTime.UtcNow;
+        await RollbackService.SaveManifestAsync(rollbackRoot, rollbackManifest, cancellationToken);
 
         var note = "A rollback backup was created automatically before restore." + Environment.NewLine +
                    "Source: " + packageRoot + Environment.NewLine +
