@@ -18,6 +18,9 @@ public sealed class MainForm : Form
     private readonly Button _loadButton = new() { Text = "Load backup", AutoSize = true };
     private readonly Button _previewButton = new() { Text = "Preview", AutoSize = true };
     private readonly Button _restoreButton = new() { Text = "Restore", AutoSize = true };
+    private readonly Button _updateButton = new() { Text = "Check for updates", AutoSize = true };
+    private readonly Button _toggleBackupButton = new() { Text = "Select / clear all", AutoSize = true };
+    private readonly Button _toggleRestoreButton = new() { Text = "Select / clear all", AutoSize = true };
     private readonly CheckBox _overwrite = new()
     {
         Text = "Overwrite existing files (with rollback backup)",
@@ -28,7 +31,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Graphics Settings Migrator";
+        Text = "Graphics Settings Migrator " + UpdateService.CurrentVersionText;
         Width = 1220;
         Height = 790;
         MinimumSize = new Size(900, 600);
@@ -48,6 +51,9 @@ public sealed class MainForm : Form
         _loadButton.Click += async (_, _) => await LoadPackageAsync();
         _previewButton.Click += (_, _) => ShowPreview();
         _restoreButton.Click += async (_, _) => await RestoreAsync();
+        _updateButton.Click += async (_, _) => await CheckForUpdatesAsync();
+        _toggleBackupButton.Click += (_, _) => ToggleAll(_backupGrid);
+        _toggleRestoreButton.Click += (_, _) => ToggleAll(_restoreGrid);
         Shown += async (_, _) => await ScanAsync();
     }
 
@@ -69,11 +75,15 @@ public sealed class MainForm : Form
         var browse = new Button { Text = "Browse…", AutoSize = true };
         browse.Click += (_, _) => BrowseInto(_backupDestination, "Choose where to save the backup");
         _backupDestination.Width = 470;
+        actions.Controls.Add(_toggleBackupButton);
         actions.Controls.Add(_scanButton);
         actions.Controls.Add(new Label { Text = "  Save to:", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_backupDestination);
         actions.Controls.Add(browse);
         actions.Controls.Add(_backupButton);
+        actions.Controls.Add(new Label { Text = "  Version " + UpdateService.CurrentVersionText,
+            AutoSize = true, Padding = new Padding(8, 7, 0, 0) });
+        actions.Controls.Add(_updateButton);
         layout.Controls.Add(intro, 0, 0);
         layout.Controls.Add(actions, 0, 1);
         layout.Controls.Add(_backupGrid, 0, 2);
@@ -106,6 +116,7 @@ public sealed class MainForm : Form
         chooseTarget.Click += (_, _) => ChooseTargetForCurrentRow();
         top.Controls.Add(_packagePath);
         top.Controls.Add(browse);
+        top.Controls.Add(_toggleRestoreButton);
         top.Controls.Add(_loadButton);
         top.Controls.Add(autoMap);
         top.Controls.Add(chooseTarget);
@@ -347,6 +358,51 @@ public sealed class MainForm : Form
         finally { SetBusy(false); }
     }
 
+    private async Task CheckForUpdatesAsync()
+    {
+        SetBusy(true);
+        _updateButton.Text = "Checking...";
+        try
+        {
+            var result = await UpdateService.CheckAsync();
+            if (!result.IsAvailable)
+            {
+                MessageBox.Show(this,
+                    "You already have the latest version (" + UpdateService.CurrentVersionText + ").",
+                    "No updates available", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var update = result.Update!;
+            var answer = MessageBox.Show(this,
+                "Graphics Settings Migrator " + UpdateService.CurrentVersionText +
+                " can be updated to " + update.Version.ToString(3) + ".\n\n" +
+                "Download: " + FormatBytes(update.SizeBytes) +
+                "\nSource: GitHub Releases\nIntegrity: GitHub SHA-256 digest\n\n" +
+                "The application will close, replace its portable files, and restart. Continue?",
+                "Update available", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes) return;
+
+            _updateButton.Text = "Downloading...";
+            var progress = new Progress<string>(message => Log(_backupLog, message));
+            await UpdateService.DownloadAndLaunchAsync(update, progress);
+            Application.Exit();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            Log(_backupLog, "Update failed: " + ex.Message);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                _updateButton.Text = "Check for updates";
+                SetBusy(false);
+            }
+        }
+    }
+
     private List<RestoreSelection> GetRestoreSelections()
     {
         if (_loadedManifest == null) throw new InvalidOperationException("Load a backup folder first.");
@@ -376,8 +432,22 @@ public sealed class MainForm : Form
         _scanButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
         _loadButton.Enabled = !busy;
+        _toggleBackupButton.Enabled = !busy;
+        _toggleRestoreButton.Enabled = !busy;
+        _updateButton.Enabled = !busy;
         _previewButton.Enabled = !busy;
         _restoreButton.Enabled = !busy;
+    }
+
+    private static void ToggleAll(DataGridView grid)
+    {
+        grid.EndEdit();
+        var rows = grid.Rows.Cast<DataGridViewRow>().ToList();
+        if (rows.Count == 0) return;
+        var selectAll = rows.Any(row => !IsSelected(row));
+        foreach (var row in rows)
+            row.Cells["Selected"].Value = selectAll;
+        grid.InvalidateColumn(grid.Columns["Selected"].Index);
     }
 
     private static bool IsSelected(DataGridViewRow row) =>
