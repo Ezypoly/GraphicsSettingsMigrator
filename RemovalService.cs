@@ -22,13 +22,13 @@ internal sealed class RemovalService
         var recoveryRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "GraphicsSettingsMigrator Removed Settings");
-        progress?.Report("Creating a recovery backup before removal...");
+        progress?.Report("Creating a recovery copy before removal...");
         var packageRoot = await _backupService.CreateBackupAsync(
             locations, recoveryRoot, progress, cancellationToken);
         var manifestPath = Path.Combine(packageRoot, "manifest.json");
         var manifest = JsonSerializer.Deserialize<BackupManifest>(
                            await File.ReadAllTextAsync(manifestPath, cancellationToken), JsonSupport.Options)
-                       ?? throw new InvalidDataException("The recovery backup manifest is invalid.");
+                       ?? throw new InvalidDataException("The recovery-copy manifest is invalid.");
 
         var result = new RemovalResult { RecoveryBackupPath = packageRoot };
         var index = 0;
@@ -41,7 +41,7 @@ internal sealed class RemovalService
             try
             {
                 var entry = manifest.Entries.SingleOrDefault(x => x.Id == location.Id)
-                    ?? throw new InvalidDataException("A settings set is missing from the recovery backup.");
+                    ?? throw new InvalidDataException("A settings set is missing from the recovery copy.");
                 if (location.Kind == SourceKind.Registry)
                 {
                     RegistryTransfer.Delete(location.SourcePath);
@@ -52,7 +52,7 @@ internal sealed class RemovalService
                 if (location.Kind == SourceKind.File)
                 {
                     var backupFile = entry.Files.SingleOrDefault()
-                        ?? throw new InvalidDataException("The recovery backup does not contain the source file.");
+                        ?? throw new InvalidDataException("The recovery copy does not contain the source file.");
                     if (await DeleteVerifiedFileAsync(location.SourcePath, backupFile, cancellationToken))
                         result.RemovedFiles++;
                     else
@@ -86,7 +86,7 @@ internal sealed class RemovalService
             }
         }
 
-        progress?.Report("Removal completed. Recovery backup: " + packageRoot);
+        progress?.Report("Removal completed. Recovery copy: " + packageRoot);
         return result;
     }
 

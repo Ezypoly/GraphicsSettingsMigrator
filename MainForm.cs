@@ -55,6 +55,8 @@ public sealed class MainForm : Form
                 "GraphicsSettingsBackups")
             : preferences.BackupDestination;
         _packagePath.Text = preferences.RestorePackagePath;
+        _backupDestination.PlaceholderText = "Library folder containing multiple saved copies";
+        _packagePath.PlaceholderText = "One saved-copy folder containing manifest.json";
         _overwrite.Checked = preferences.OverwriteExistingFiles;
         _autoSelectLimit.Value = _options.AutoSelectFolderLimitMb;
         ConfigureBackupGrid();
@@ -92,6 +94,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             MaximumSize = new Size(1120, 0),
             Text = "Find existing settings, select the required sets, and save a portable settings copy. " +
+                   "A new timestamped folder is created inside the selected Save library folder. " +
                    "ZBrush QuickSave and Temp data are not included. Large folders above the saved auto-select " +
                    "limit stay visible but unchecked. Use Ctrl/Shift to select rows; press Space to toggle " +
                    "their checkboxes."
@@ -106,7 +109,8 @@ public sealed class MainForm : Form
         actions.Controls.Add(_removeButton);
         actions.Controls.Add(_toggleBackupButton);
         actions.Controls.Add(_scanButton);
-        actions.Controls.Add(new Label { Text = "  Save to:", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
+        actions.Controls.Add(new Label { Text = "  Save library folder:", AutoSize = true,
+            Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_backupDestination);
         actions.Controls.Add(browse);
         actions.Controls.Add(new Label { Text = "  Auto-select folders up to:", AutoSize = true,
@@ -148,6 +152,8 @@ public sealed class MainForm : Form
         autoMap.Click += (_, _) => AutoMapTargets();
         var chooseTarget = new Button { Text = "Target folder…", AutoSize = true };
         chooseTarget.Click += (_, _) => ChooseTargetForCurrentRow();
+        top.Controls.Add(new Label { Text = "Saved copy folder:", AutoSize = true,
+            Padding = new Padding(0, 7, 0, 0) });
         top.Controls.Add(_packagePath);
         top.Controls.Add(browse);
         top.Controls.Add(_toggleRestoreButton);

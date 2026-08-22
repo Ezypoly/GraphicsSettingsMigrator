@@ -14,7 +14,7 @@ public sealed class BackupUpdateService
         CancellationToken cancellationToken = default)
     {
         if (selections.Count == 0)
-            throw new InvalidOperationException("No backup contents selected for update.");
+            throw new InvalidOperationException("No saved-copy contents selected for update.");
 
         packageRoot = ValidatePackageRoot(packageRoot);
         var manifest = await _restoreService.LoadManifestAsync(packageRoot, cancellationToken);
@@ -49,7 +49,7 @@ public sealed class BackupUpdateService
                                                             selection.Source.Category);
                     if (manifest.Entries.Any(entry => SameIdentity(entry, selection.Source, false)))
                         throw new InvalidOperationException(
-                            "This settings set is already represented in the backup. Load the backup again: " +
+                            "This settings set is already represented in the saved copy. Open the saved copy again: " +
                             selection.Source.Product + " — " + selection.Source.Category);
 
                     progress?.Report("Adding " + number + "/" + selections.Count + ": " +
@@ -154,7 +154,7 @@ public sealed class BackupUpdateService
                 {
                     throw new AggregateException(
                         "The update could not be applied and the original folder could not be moved back. " +
-                        "The previous backup remains at: " + previousRoot, applyError, restoreError);
+                        "The previous saved copy remains at: " + previousRoot, applyError, restoreError);
                 }
                 throw;
             }
@@ -166,7 +166,7 @@ public sealed class BackupUpdateService
             }
             catch (Exception ex)
             {
-                result.CleanupWarning = "The updated backup is ready, but the temporary previous copy could not " +
+                result.CleanupWarning = "The updated saved copy is ready, but the temporary previous copy could not " +
                                         "be removed: " + previousRoot + " (" + ex.Message + ")";
             }
 
@@ -317,7 +317,7 @@ public sealed class BackupUpdateService
             .Where(item => string.Equals(EntryKey(item.entry), EntryKey(selected),
                 StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count != 1)
-            throw new InvalidOperationException("The backup changed after it was loaded. Load it again before updating.");
+            throw new InvalidOperationException("The saved copy changed after it was opened. Open it again before updating.");
         return matches[0].index;
     }
 
@@ -339,11 +339,11 @@ public sealed class BackupUpdateService
     private static string ValidatePackageRoot(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException("No backup folder selected.");
+            throw new InvalidOperationException("No saved-copy folder selected.");
         var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException("Backup folder not found: " + fullPath);
+        if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException("Saved-copy folder not found: " + fullPath);
         if (string.Equals(fullPath, Path.GetPathRoot(fullPath)?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("A drive root cannot be updated as a backup package.");
+            throw new InvalidOperationException("A drive root cannot be updated as a saved copy.");
         if (!File.Exists(Path.Combine(fullPath, "manifest.json")))
             throw new FileNotFoundException("The selected folder does not contain manifest.json.");
         return fullPath;
@@ -384,7 +384,7 @@ public sealed class BackupUpdateService
             {
                 if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException(
-                        "Backup packages containing directory links cannot be updated safely: " + directory);
+                        "Saved copies containing directory links cannot be updated safely: " + directory);
                 Directory.CreateDirectory(BackupService.SafeChildPath(destinationRoot,
                     Path.GetRelativePath(sourceRoot, directory)));
                 pending.Push(directory);
@@ -394,7 +394,7 @@ public sealed class BackupUpdateService
                 cancellationToken.ThrowIfCancellationRequested();
                 if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException(
-                        "Backup packages containing file links cannot be updated safely: " + file);
+                        "Saved copies containing file links cannot be updated safely: " + file);
                 var destination = BackupService.SafeChildPath(destinationRoot, Path.GetRelativePath(sourceRoot, file));
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 await using var source = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read,

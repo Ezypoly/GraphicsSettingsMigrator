@@ -61,6 +61,7 @@ internal sealed class BackupUpdateUiController
     {
         _form = form;
         _path.Text = _preferencesStore.Load().UpdateBackupPath;
+        _path.PlaceholderText = "One saved-copy folder containing manifest.json";
         _autoSelectLimit.Value = _options.AutoSelectFolderLimitMb;
         _tabs = Descendants<TabControl>(form).FirstOrDefault();
         if (_tabs == null) return;
@@ -102,6 +103,8 @@ internal sealed class BackupUpdateUiController
         {
             AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(0, 6, 0, 6)
         };
+        actions.Controls.Add(new Label { Text = "Saved copy folder:", AutoSize = true,
+            Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_path);
         actions.Controls.Add(_browse);
         actions.Controls.Add(_load);

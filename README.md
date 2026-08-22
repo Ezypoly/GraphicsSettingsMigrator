@@ -106,6 +106,10 @@ Select the required sets and choose **Update selected**.
 - Cache and oversized folders remain manual selections, just like on the Save tab.
 - Ctrl/Shift multi-selection and Space or group checkbox toggling work on this tab too.
 
+The **Save library folder** is a parent folder that can contain many timestamped
+saved copies. A **Saved copy folder** is one specific child folder containing
+`manifest.json`; choose that folder when updating or restoring.
+
 ## Selection and cache handling
 
 - Use Ctrl or Shift to highlight multiple rows, then click any highlighted

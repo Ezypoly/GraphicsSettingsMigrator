@@ -52,7 +52,7 @@ internal sealed class UserPreferencesStore
         }
         catch
         {
-            // Remembering UI choices should never prevent backup or restore.
+            // Remembering UI choices should never prevent save or restore.
         }
     }
 }
