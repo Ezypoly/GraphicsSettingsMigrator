@@ -125,6 +125,7 @@ internal sealed class BackupUpdateUiController
     private void ConfigureGrid()
     {
         _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "Update", Width = 70 });
+        _grid.Columns.Add(TextColumn("Status", "Saved-copy status", 145));
         _grid.Columns.Add(TextColumn("Product", "Application", 180));
         _grid.Columns.Add(TextColumn("Version", "Version", 75));
         _grid.Columns.Add(TextColumn("Category", "Settings set", 185));
@@ -135,7 +136,6 @@ internal sealed class BackupUpdateUiController
             Name = "Path", HeaderText = "Path", ReadOnly = true,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = 260
         });
-        _grid.Columns.Add(TextColumn("Status", "Saved-copy status", 145));
         ConfigureMultiRowSelection();
     }
 
