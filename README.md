@@ -87,21 +87,28 @@ because they may require administrator rights and may not work across versions.
 Project plug-ins belonging to Unity, Godot, or Unreal projects remain inside
 those projects and are not discovered by a global disk search.
 
-## Updating an existing backup
+## Updating an existing saved copy
 
-Open **Update backup**, choose a folder containing `manifest.json`, and the app
-will show the existing package contents in a read-only left column. The
-**Update** column is enabled only where the matching settings set exists on the
-current PC. Select the sets to refresh and choose **Update selected**.
+Open **Update saved copy**, choose a folder containing `manifest.json`, and the
+app will show the same detailed settings table used by the Save and Open / restore
+workflows. It combines the package contents with every settings set currently
+found on the PC. Existing rows can be refreshed, while rows marked **New — add**
+can be appended to an older package (including newly discovered plug-in folders).
+Select the required sets and choose **Update selected**.
 
 - Every selected set is compared by SHA-256, not only by file date or size.
-- If all files are identical, that set is skipped and the backup is not rewritten.
+- If all files are identical, that set is skipped and the package is not rewritten.
+- Newly discovered selected sets are appended with their own payload and checksums.
 - Unchecked sets and contents not found on the current PC remain untouched.
-- Files removed from a selected source are removed from that set in the backup.
+- Files removed from a selected source are removed from that set in the package.
 - The original package is replaced only after a complete staging copy and new
   manifest are ready; a failed update moves the original folder back.
-- Cache and oversized folders remain manual selections, just like on the Backup tab.
+- Cache and oversized folders remain manual selections, just like on the Save tab.
 - Ctrl/Shift multi-selection and Space or group checkbox toggling work on this tab too.
+
+The **Save library folder** is a parent folder that can contain many timestamped
+saved copies. A **Saved copy folder** is one specific child folder containing
+`manifest.json`; choose that folder when updating or restoring.
 
 ## Selection and cache handling
 
@@ -109,16 +116,20 @@ current PC. Select the sets to refresh and choose **Update selected**.
   checkbox or press Space to toggle all of their checkboxes.
 - **Auto-select folders up to** is saved between runs and defaults to 500 MB.
   Larger folders remain visible but unchecked; set it to `0` for no size limit.
-  **Select / clear all** also respects this limit.
+  **Select / clear all** also respects this limit. The same control appears on
+  **Update saved copy** and applies to existing and New rows.
 - **Select / clear all** selects normal settings but deliberately skips every
   cache-containing set. Cache rows can only be enabled manually.
-- Choosing a backup folder with **Backup...** on the Restore tab loads its
-  manifest immediately. **Load backup** remains available for a pasted or
-  manually edited path.
+- Choosing **Open...** on the Open / restore or Update saved copy tab loads the
+  selected folder immediately. **Open** remains available for a pasted or manually
+  edited path.
+- Save destination, last opened restore folder, last opened update folder, overwrite
+  choice, size limit, and row selections are stored under `%LOCALAPPDATA%` and
+  survive portable application updates.
 
 ## Removing old settings
 
-Highlight one or more rows on the Backup tab and choose **Remove selected...**.
+Highlight one or more rows on the Save tab and choose **Remove selected...**.
 Removal is blocked while a supported graphics application is running and always
 requires an explicit Yes/No confirmation (No is the default). Before anything
 is removed, the selected data is backed up to
@@ -129,7 +140,7 @@ caches remain untouched unless their own row is explicitly highlighted.
 ## Updates
 
 Version 1.3.0 and later can update themselves from the repository's latest
-GitHub Release. Use **Check for updates** on the Backup tab. The updater:
+GitHub Release. Use **Check for updates** on the Save tab. The updater:
 
 - downloads only `GraphicsSettingsMigrator-win-x64.zip` from this repository;
 - verifies the exact asset size and GitHub-provided SHA-256 digest;

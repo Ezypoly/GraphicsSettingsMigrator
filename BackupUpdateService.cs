@@ -14,7 +14,7 @@ public sealed class BackupUpdateService
         CancellationToken cancellationToken = default)
     {
         if (selections.Count == 0)
-            throw new InvalidOperationException("No backup contents selected for update.");
+            throw new InvalidOperationException("No saved-copy contents selected for update.");
 
         packageRoot = ValidatePackageRoot(packageRoot);
         var manifest = await _restoreService.LoadManifestAsync(packageRoot, cancellationToken);
@@ -40,6 +40,30 @@ public sealed class BackupUpdateService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 number++;
+                if (selection.ExistingEntry == null)
+                {
+                    var sourceKey = SourceKey(selection.Source);
+                    if (!selectedKeys.Add(sourceKey))
+                        throw new InvalidOperationException("The same new settings set was selected more than once: " +
+                                                            selection.Source.Product + " — " +
+                                                            selection.Source.Category);
+                    if (manifest.Entries.Any(entry => SameIdentity(entry, selection.Source, false)))
+                        throw new InvalidOperationException(
+                            "This settings set is already represented in the saved copy. Open the saved copy again: " +
+                            selection.Source.Product + " — " + selection.Source.Category);
+
+                    progress?.Report("Adding " + number + "/" + selections.Count + ": " +
+                                     selection.Source.Product + " — " + selection.Source.Category);
+                    var newCapturePath = Path.Combine(captureRoot, number.ToString(CultureInfo.InvariantCulture));
+                    var id = Guid.NewGuid().ToString("N");
+                    var added = await BackupService.CaptureEntryAsync(selection.Source, newCapturePath, id,
+                        Path.Combine("payload", id).Replace('\\', '/'), cancellationToken);
+                    changed.Add(new ChangedEntry(-1, null, added, newCapturePath));
+                    result.AddedSets++;
+                    result.UpdatedFiles += added.FileCount;
+                    continue;
+                }
+
                 var index = FindCurrentEntry(manifest, selection.ExistingEntry);
                 var existing = manifest.Entries[index];
                 var key = EntryKey(existing);
@@ -77,24 +101,31 @@ public sealed class BackupUpdateService
 
             if (changed.Count == 0)
             {
-                progress?.Report("Nothing changed. The backup was left untouched.");
+                progress?.Report("Nothing changed. The saved copy was left untouched.");
                 return result;
             }
 
-            progress?.Report("Preparing a safe replacement copy of the backup...");
+            progress?.Report("Preparing a safe replacement...");
             await CopyDirectoryAsync(packageRoot, stagingRoot, cancellationToken);
 
             foreach (var item in changed)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var stagedPayload = BackupService.SafeChildPath(stagingRoot, item.Existing.PayloadPath);
+                var stagedPayload = BackupService.SafeChildPath(stagingRoot, item.Replacement.PayloadPath);
                 if (File.Exists(stagedPayload))
                     throw new InvalidDataException("A payload path points to a file instead of a folder: " +
-                                                   item.Existing.PayloadPath);
-                if (Directory.Exists(stagedPayload)) Directory.Delete(stagedPayload, true);
+                                                   item.Replacement.PayloadPath);
+                if (Directory.Exists(stagedPayload))
+                {
+                    if (item.Existing == null)
+                        throw new InvalidDataException("A new payload path already exists: " +
+                                                       item.Replacement.PayloadPath);
+                    Directory.Delete(stagedPayload, true);
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(stagedPayload)!);
                 Directory.Move(item.CapturePath, stagedPayload);
-                manifest.Entries[item.ManifestIndex] = item.Replacement;
+                if (item.ManifestIndex >= 0) manifest.Entries[item.ManifestIndex] = item.Replacement;
+                else manifest.Entries.Add(item.Replacement);
             }
 
             manifest.LastUpdatedUtc = DateTime.UtcNow;
@@ -123,23 +154,23 @@ public sealed class BackupUpdateService
                 {
                     throw new AggregateException(
                         "The update could not be applied and the original folder could not be moved back. " +
-                        "The previous backup remains at: " + previousRoot, applyError, restoreError);
+                        "The previous saved copy remains at: " + previousRoot, applyError, restoreError);
                 }
                 throw;
             }
 
-            result.UpdatedSets = changed.Count;
+            result.UpdatedSets = changed.Count(item => item.ManifestIndex >= 0);
             try
             {
                 Directory.Delete(previousRoot, true);
             }
             catch (Exception ex)
             {
-                result.CleanupWarning = "The updated backup is ready, but the temporary previous copy could not " +
+                result.CleanupWarning = "The updated saved copy is ready, but the temporary previous copy could not " +
                                         "be removed: " + previousRoot + " (" + ex.Message + ")";
             }
 
-            progress?.Report("Backup updated: " + packageRoot);
+            progress?.Report("Saved copy updated: " + packageRoot);
             return result;
         }
         finally
@@ -277,13 +308,16 @@ public sealed class BackupUpdateService
         return changed + existing.Files.Count(file => !newPaths.Contains(file.RelativePath));
     }
 
+    private static string SourceKey(SettingsLocation source) => "new\u001f" + string.Join("\u001f",
+        source.AppId, source.Version, source.Category, source.Kind, NormalizePortable(source.PortablePath));
+
     private static int FindCurrentEntry(BackupManifest manifest, BackupEntry selected)
     {
         var matches = manifest.Entries.Select((entry, index) => (entry, index))
             .Where(item => string.Equals(EntryKey(item.entry), EntryKey(selected),
                 StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count != 1)
-            throw new InvalidOperationException("The backup changed after it was loaded. Load it again before updating.");
+            throw new InvalidOperationException("The saved copy changed after it was opened. Open it again before updating.");
         return matches[0].index;
     }
 
@@ -305,11 +339,11 @@ public sealed class BackupUpdateService
     private static string ValidatePackageRoot(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException("No backup folder selected.");
+            throw new InvalidOperationException("No saved-copy folder selected.");
         var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException("Backup folder not found: " + fullPath);
+        if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException("Saved-copy folder not found: " + fullPath);
         if (string.Equals(fullPath, Path.GetPathRoot(fullPath)?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("A drive root cannot be updated as a backup package.");
+            throw new InvalidOperationException("A drive root cannot be updated as a saved copy.");
         if (!File.Exists(Path.Combine(fullPath, "manifest.json")))
             throw new FileNotFoundException("The selected folder does not contain manifest.json.");
         return fullPath;
@@ -350,7 +384,7 @@ public sealed class BackupUpdateService
             {
                 if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException(
-                        "Backup packages containing directory links cannot be updated safely: " + directory);
+                        "Saved copies containing directory links cannot be updated safely: " + directory);
                 Directory.CreateDirectory(BackupService.SafeChildPath(destinationRoot,
                     Path.GetRelativePath(sourceRoot, directory)));
                 pending.Push(directory);
@@ -360,7 +394,7 @@ public sealed class BackupUpdateService
                 cancellationToken.ThrowIfCancellationRequested();
                 if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException(
-                        "Backup packages containing file links cannot be updated safely: " + file);
+                        "Saved copies containing file links cannot be updated safely: " + file);
                 var destination = BackupService.SafeChildPath(destinationRoot, Path.GetRelativePath(sourceRoot, file));
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 await using var source = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read,
@@ -396,7 +430,7 @@ public sealed class BackupUpdateService
 
     private sealed record ChangedEntry(
         int ManifestIndex,
-        BackupEntry Existing,
+        BackupEntry? Existing,
         BackupEntry Replacement,
         string CapturePath);
 }

@@ -77,7 +77,7 @@ internal sealed class RollbackUiController
         layout.Controls.Add(_list, 0, 2);
         layout.Controls.Add(_log, 0, 3);
         page.Controls.Add(layout);
-        ApplyDark(page);
+        DarkTheme.Apply(page);
         return page;
     }
 
@@ -157,23 +157,6 @@ internal sealed class RollbackUiController
 
     private void Log(string message) =>
         _log.AppendText("[" + DateTime.Now.ToString("HH:mm:ss") + "] " + message + Environment.NewLine);
-
-    private static void ApplyDark(Control root)
-    {
-        root.ForeColor = Color.FromArgb(232, 232, 235);
-        root.BackColor = root switch
-        {
-            Button => Color.FromArgb(47, 49, 54),
-            TextBox or ListBox => Color.FromArgb(32, 33, 36),
-            _ => Color.FromArgb(24, 24, 27)
-        };
-        if (root is Button button)
-        {
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderColor = Color.FromArgb(68, 70, 76);
-        }
-        foreach (Control child in root.Controls) ApplyDark(child);
-    }
 
     private static IEnumerable<T> Descendants<T>(Control root) where T : Control
     {

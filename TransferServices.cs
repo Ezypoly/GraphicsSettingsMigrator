@@ -25,7 +25,7 @@ public sealed class BackupService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (selected.Count == 0) throw new InvalidOperationException("No settings sets selected for backup.");
+        if (selected.Count == 0) throw new InvalidOperationException("No settings sets selected to save.");
         if (string.IsNullOrWhiteSpace(destinationRoot))
             throw new InvalidOperationException("No destination folder selected.");
 
@@ -350,7 +350,7 @@ public sealed class RestoreService
         rollbackManifest.CompletedUtc = DateTime.UtcNow;
         await RollbackService.SaveManifestAsync(rollbackRoot, rollbackManifest, cancellationToken);
 
-        var note = "A rollback backup was created automatically before restore." + Environment.NewLine +
+        var note = "A rollback recovery copy was created automatically before restore." + Environment.NewLine +
                    "Source: " + packageRoot + Environment.NewLine +
                    "UTC time: " + DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         await File.WriteAllTextAsync(Path.Combine(rollbackRoot, "README.txt"), note, cancellationToken);
@@ -427,7 +427,7 @@ public sealed class RestoreService
     private static async Task VerifyFileAsync(string source, BackupFile? expected,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(source)) throw new FileNotFoundException("A payload file is missing from the backup.", source);
+        if (!File.Exists(source)) throw new FileNotFoundException("A payload file is missing from the saved copy.", source);
         if (expected == null || string.IsNullOrWhiteSpace(expected.Sha256)) return;
         var actual = await BackupService.HashFileAsync(source, cancellationToken);
         if (!actual.Equals(expected.Sha256, StringComparison.OrdinalIgnoreCase))
