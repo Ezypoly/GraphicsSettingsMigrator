@@ -75,6 +75,26 @@ See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-speci
   and libraries stored outside the usual preferences folder are included where
   their locations are known.
 
+## Selection and cache handling
+
+- Use Ctrl or Shift to highlight multiple rows, then press Space to toggle all
+  of their checkboxes.
+- **Select / clear all** selects normal settings but deliberately skips every
+  cache-containing set. Cache rows can only be enabled manually.
+- Choosing a backup folder with **Backup...** on the Restore tab loads its
+  manifest immediately. **Load backup** remains available for a pasted or
+  manually edited path.
+
+## Removing old settings
+
+Highlight one or more rows on the Backup tab and choose **Remove selected...**.
+Removal is blocked while a supported graphics application is running and always
+requires an explicit Yes/No confirmation (No is the default). Before anything
+is removed, the selected data is backed up to
+`Documents\GraphicsSettingsMigrator Removed Settings`. Only files whose SHA-256
+still matches that recovery backup are deleted. Excluded projects, scenes, and
+caches remain untouched unless their own row is explicitly highlighted.
+
 ## Updates
 
 Version 1.3.0 and later can update themselves from the repository's latest

@@ -448,6 +448,17 @@ public static class RegistryTransfer
             ?? throw new InvalidOperationException("Could not create registry key " + targetPath);
         RestoreKey(key, snapshot, overwrite);
     }
+    public static void Delete(string path)
+    {
+        var normalized = path.Replace('/', '\\');
+        if (!normalized.StartsWith("HKCU\\", StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("Only HKCU is supported: " + path);
+        var subPath = normalized[5..].Trim('\\');
+        if (string.IsNullOrWhiteSpace(subPath))
+            throw new InvalidOperationException("The HKCU root cannot be deleted.");
+        Registry.CurrentUser.DeleteSubKeyTree(subPath, throwOnMissingSubKey: false);
+    }
+
 
     private static RegistrySnapshot CaptureKey(RegistryKey key, string path)
     {
