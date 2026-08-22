@@ -10,6 +10,7 @@ public sealed class MainForm : Form
     private readonly RemovalService _removalService = new();
     private readonly UserOptions _options = UserOptions.Load();
     private readonly UserPreferencesStore _preferencesStore = new();
+    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
     private readonly DataGridView _backupGrid = CreateGrid();
     private readonly DataGridView _restoreGrid = CreateGrid();
     private readonly TextBox _backupDestination = new();
@@ -25,6 +26,11 @@ public sealed class MainForm : Form
     private readonly Button _toggleBackupButton = new() { Text = "Select / clear all", AutoSize = true };
     private readonly Button _toggleRestoreButton = new() { Text = "Select / clear all", AutoSize = true };
     private readonly Button _removeButton = new() { Text = "Remove selected...", AutoSize = true };
+    private readonly ComboBox _appearance = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 125
+    };
     private readonly NumericUpDown _autoSelectLimit = new()
     {
         Minimum = 0,
@@ -50,6 +56,9 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9F);
         var preferences = _preferencesStore.Load();
+        _appearance.Items.AddRange(new object[] { DarkTheme.ClassicName, DarkTheme.ConsoleName });
+        _appearance.SelectedItem = string.Equals(preferences.Appearance, DarkTheme.ClassicName,
+            StringComparison.OrdinalIgnoreCase) ? DarkTheme.ClassicName : DarkTheme.ConsoleName;
         _backupDestination.Text = string.IsNullOrWhiteSpace(preferences.BackupDestination)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "GraphicsSettingsBackups")
@@ -63,11 +72,10 @@ public sealed class MainForm : Form
         ConfigureRestoreGrid();
         ConfigureMultiRowSelection(_backupGrid);
         ConfigureMultiRowSelection(_restoreGrid);
-        var tabs = new TabControl { Dock = DockStyle.Fill };
-        tabs.TabPages.Add(BuildBackupTab());
-        tabs.TabPages.Add(BuildRestoreTab());
-        Controls.Add(tabs);
-        DarkTheme.Apply(this, tabs);
+        _tabs.TabPages.Add(BuildBackupTab());
+        _tabs.TabPages.Add(BuildRestoreTab());
+        Controls.Add(_tabs);
+        DarkTheme.Apply(this, _tabs, UseConsoleStyle);
         _scanButton.Click += async (_, _) => await ScanAsync();
         _backupButton.Click += async (_, _) => await BackupAsync();
         _loadButton.Click += async (_, _) => await LoadPackageAsync();
@@ -82,6 +90,7 @@ public sealed class MainForm : Form
         _backupDestination.TextChanged += (_, _) => SavePathPreferences();
         _packagePath.TextChanged += (_, _) => SavePathPreferences();
         _overwrite.CheckedChanged += (_, _) => SavePathPreferences();
+        _appearance.SelectedIndexChanged += (_, _) => AppearanceChanged();
         FormClosing += (_, _) => SavePathPreferences();
     }
 
@@ -118,6 +127,9 @@ public sealed class MainForm : Form
         actions.Controls.Add(_autoSelectLimit);
         actions.Controls.Add(new Label { Text = "MB (0 = unlimited)", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_backupButton);
+        actions.Controls.Add(new Label { Text = "  Appearance:", AutoSize = true,
+            Padding = new Padding(8, 7, 0, 0) });
+        actions.Controls.Add(_appearance);
         actions.Controls.Add(new Label { Text = "  Version " + UpdateService.CurrentVersionText,
             AutoSize = true, Padding = new Padding(8, 7, 0, 0) });
         actions.Controls.Add(_updateButton);
@@ -520,7 +532,17 @@ public sealed class MainForm : Form
         preferences.BackupDestination = _backupDestination.Text.Trim();
         preferences.RestorePackagePath = _packagePath.Text.Trim();
         preferences.OverwriteExistingFiles = _overwrite.Checked;
+        preferences.Appearance = Convert.ToString(_appearance.SelectedItem) ?? DarkTheme.ConsoleName;
         _preferencesStore.Save(preferences);
+    }
+
+    private bool UseConsoleStyle => !string.Equals(Convert.ToString(_appearance.SelectedItem),
+        DarkTheme.ClassicName, StringComparison.OrdinalIgnoreCase);
+
+    private void AppearanceChanged()
+    {
+        DarkTheme.SetStyle(this, _tabs, UseConsoleStyle);
+        SavePathPreferences();
     }
 
     private List<RestoreSelection> GetRestoreSelections()

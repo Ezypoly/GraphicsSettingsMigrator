@@ -8,6 +8,7 @@ internal sealed class UserPreferences
     public string RestorePackagePath { get; set; } = "";
     public string UpdateBackupPath { get; set; } = "";
     public bool OverwriteExistingFiles { get; set; } = true;
+    public string Appearance { get; set; } = DarkTheme.ConsoleName;
     public Dictionary<string, bool> BackupSelections { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, bool> RestoreSelections { get; set; } =
