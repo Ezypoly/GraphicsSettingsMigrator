@@ -79,7 +79,7 @@ internal sealed class SelectionMemoryController
         foreach (var grid in Descendants<DataGridView>(root).Where(IsSettingsGrid))
             foreach (DataGridViewRow row in grid.Rows)
                 SaveRow(row, IsRestoreGrid(grid), saveFile: false);
-        _store.Save(_preferences);
+        SavePreferences();
     }
 
     private void SaveRow(DataGridViewRow row, bool restore, bool saveFile = true)
@@ -90,7 +90,17 @@ internal sealed class SelectionMemoryController
                        bool.TryParse(Convert.ToString(row.Cells["Selected"].Value), out var value) && value;
         var selections = restore ? _preferences.RestoreSelections : _preferences.BackupSelections;
         selections[key] = selected;
-        if (saveFile) _store.Save(_preferences);
+        if (saveFile) SavePreferences();
+    }
+
+    private void SavePreferences()
+    {
+        var latest = _store.Load();
+        latest.BackupSelections = new Dictionary<string, bool>(
+            _preferences.BackupSelections, StringComparer.OrdinalIgnoreCase);
+        latest.RestoreSelections = new Dictionary<string, bool>(
+            _preferences.RestoreSelections, StringComparer.OrdinalIgnoreCase);
+        _store.Save(latest);
     }
 
     private static string? SelectionKey(object? item) => item switch
@@ -98,6 +108,10 @@ internal sealed class SelectionMemoryController
         SettingsLocation location => BuildKey(location.AppId, location.Version, location.Category,
             location.PortablePath, location.Kind),
         BackupEntry entry => BuildKey(entry.AppId, entry.SourceVersion, entry.Category,
+            entry.PortablePath, entry.Kind),
+        BackupUpdateItem { Source: { } source } => BuildKey(source.AppId, source.Version, source.Category,
+            source.PortablePath, source.Kind),
+        BackupUpdateItem { ExistingEntry: { } entry } => BuildKey(entry.AppId, entry.SourceVersion, entry.Category,
             entry.PortablePath, entry.Kind),
         _ => null
     };

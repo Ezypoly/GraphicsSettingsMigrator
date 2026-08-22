@@ -9,6 +9,7 @@ public sealed class MainForm : Form
     private readonly RestoreService _restoreService = new();
     private readonly RemovalService _removalService = new();
     private readonly UserOptions _options = UserOptions.Load();
+    private readonly UserPreferencesStore _preferencesStore = new();
     private readonly DataGridView _backupGrid = CreateGrid();
     private readonly DataGridView _restoreGrid = CreateGrid();
     private readonly TextBox _backupDestination = new();
@@ -16,8 +17,8 @@ public sealed class MainForm : Form
     private readonly TextBox _backupLog = CreateLog();
     private readonly TextBox _restoreLog = CreateLog();
     private readonly Button _scanButton = new() { Text = "Scan", AutoSize = true };
-    private readonly Button _backupButton = new() { Text = "Create backup", AutoSize = true };
-    private readonly Button _loadButton = new() { Text = "Load backup", AutoSize = true };
+    private readonly Button _backupButton = new() { Text = "Save selected", AutoSize = true };
+    private readonly Button _loadButton = new() { Text = "Open", AutoSize = true };
     private readonly Button _previewButton = new() { Text = "Preview", AutoSize = true };
     private readonly Button _restoreButton = new() { Text = "Restore", AutoSize = true };
     private readonly Button _updateButton = new() { Text = "Check for updates", AutoSize = true };
@@ -34,7 +35,7 @@ public sealed class MainForm : Form
     };
     private readonly CheckBox _overwrite = new()
     {
-        Text = "Overwrite existing files (with rollback backup)",
+        Text = "Overwrite existing files (with rollback copy)",
         Checked = true,
         AutoSize = true
     };
@@ -48,8 +49,13 @@ public sealed class MainForm : Form
         MinimumSize = new Size(900, 600);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9F);
-        _backupDestination.Text = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GraphicsSettingsBackups");
+        var preferences = _preferencesStore.Load();
+        _backupDestination.Text = string.IsNullOrWhiteSpace(preferences.BackupDestination)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "GraphicsSettingsBackups")
+            : preferences.BackupDestination;
+        _packagePath.Text = preferences.RestorePackagePath;
+        _overwrite.Checked = preferences.OverwriteExistingFiles;
         _autoSelectLimit.Value = _options.AutoSelectFolderLimitMb;
         ConfigureBackupGrid();
         ConfigureRestoreGrid();
@@ -71,17 +77,21 @@ public sealed class MainForm : Form
         _toggleRestoreButton.Click += (_, _) => ToggleAll(_restoreGrid);
         Shown += async (_, _) => await ScanAsync();
         _autoSelectLimit.ValueChanged += (_, _) => AutoSelectLimitChanged();
+        _backupDestination.TextChanged += (_, _) => SavePathPreferences();
+        _packagePath.TextChanged += (_, _) => SavePathPreferences();
+        _overwrite.CheckedChanged += (_, _) => SavePathPreferences();
+        FormClosing += (_, _) => SavePathPreferences();
     }
 
     private TabPage BuildBackupTab()
     {
-        var page = new TabPage("Backup");
+        var page = new TabPage("Save");
         var layout = NewLayout();
         var intro = new Label
         {
             AutoSize = true,
             MaximumSize = new Size(1120, 0),
-            Text = "Find existing settings, select the required sets, and create a portable backup folder. " +
+            Text = "Find existing settings, select the required sets, and save a portable settings copy. " +
                    "ZBrush QuickSave and Temp data are not included. Large folders above the saved auto-select " +
                    "limit stay visible but unchecked. Use Ctrl/Shift to select rows; press Space to toggle " +
                    "their checkboxes."
@@ -91,7 +101,7 @@ public sealed class MainForm : Form
             AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(0, 6, 0, 6)
         };
         var browse = new Button { Text = "Browse…", AutoSize = true };
-        browse.Click += (_, _) => BrowseInto(_backupDestination, "Choose where to save the backup");
+        browse.Click += (_, _) => BrowseInto(_backupDestination, "Choose where to save the settings copy");
         _backupDestination.Width = 390;
         actions.Controls.Add(_removeButton);
         actions.Controls.Add(_toggleBackupButton);
@@ -117,7 +127,7 @@ public sealed class MainForm : Form
 
     private TabPage BuildRestoreTab()
     {
-        var page = new TabPage("Restore / migrate");
+        var page = new TabPage("Open / restore");
         var layout = NewLayout();
         var intro = new Label
         {
@@ -132,8 +142,8 @@ public sealed class MainForm : Form
             AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(0, 6, 0, 6)
         };
         _packagePath.Width = 420;
-        var browse = new Button { Text = "Backup…", AutoSize = true };
-        browse.Click += async (_, _) => { if (BrowseInto(_packagePath, "Select a backup folder")) await LoadPackageAsync(); };
+        var browse = new Button { Text = "Open...", AutoSize = true };
+        browse.Click += async (_, _) => { if (BrowseInto(_packagePath, "Select a saved settings folder")) await LoadPackageAsync(); };
         var autoMap = new Button { Text = "Refresh targets", AutoSize = true };
         autoMap.Click += (_, _) => AutoMapTargets();
         var chooseTarget = new Button { Text = "Target folder…", AutoSize = true };
@@ -170,7 +180,7 @@ public sealed class MainForm : Form
 
     private void ConfigureBackupGrid()
     {
-        _backupGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "Back up", Width = 75 });
+        _backupGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "Save", Width = 75 });
         _backupGrid.Columns.Add(TextColumn("Product", "Application", 180, true));
         _backupGrid.Columns.Add(TextColumn("Version", "Version", 75, true));
         _backupGrid.Columns.Add(TextColumn("Category", "Settings set", 185, true));
@@ -247,7 +257,7 @@ public sealed class MainForm : Form
         if (running.Count > 0)
         {
             var answer = MessageBox.Show(this, "These applications are currently running:\n\n" + string.Join("\n", running) +
-                "\n\nClose them first for the most up-to-date backup. Continue anyway?",
+                "\n\nClose them first for the most up-to-date saved copy. Continue anyway?",
                 "Applications are running", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
         }
@@ -257,7 +267,7 @@ public sealed class MainForm : Form
             var progress = new Progress<string>(message => Log(_backupLog, message));
             var package = await _backupService.CreateBackupAsync(
                 selected, _backupDestination.Text.Trim(), progress);
-            MessageBox.Show(this, "Backup created:\n\n" + package,
+            MessageBox.Show(this, "Settings saved:\n\n" + package,
                 Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { ShowError(ex); Log(_backupLog, ex.ToString()); }
@@ -296,8 +306,8 @@ public sealed class MainForm : Form
             "GraphicsSettingsMigrator Removed Settings");
         var answer = MessageBox.Show(this,
             "Permanently remove " + selected.Count + " highlighted settings set(s) from this PC?\n\n" +
-            summary + "\n\nA recovery backup will be created first in:\n" + recoveryRoot +
-            "\n\nOnly files verified against that backup will be deleted. Excluded projects, scenes, " +
+            summary + "\n\nA recovery copy will be saved first in:\n" + recoveryRoot +
+            "\n\nOnly files verified against that copy will be deleted. Excluded projects, scenes, " +
             "and caches remain untouched unless their own settings row is explicitly highlighted.",
             "Confirm settings removal", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2);
@@ -313,7 +323,7 @@ public sealed class MainForm : Form
             refresh = true;
             var message = "Removal finished.\n\nFiles removed: " + result.RemovedFiles +
                           "\nRegistry keys removed: " + result.RemovedRegistryKeys +
-                          "\nRecovery backup:\n" + result.RecoveryBackupPath;
+                          "\nRecovery copy:\n" + result.RecoveryBackupPath;
             if (result.Failures.Count > 0)
                 message += "\n\nNot removed (" + result.Failures.Count + "):\n" +
                            string.Join("\n", result.Failures.Take(10));
@@ -347,7 +357,7 @@ public sealed class MainForm : Form
                 _restoreGrid.Rows[rowIndex].Tag = entry;
             }
             AutoMapTargets();
-            Log(_restoreLog, "Backup: " + _loadedManifest.SourceMachine + "\\" + _loadedManifest.SourceUser +
+            Log(_restoreLog, "Opened: " + _loadedManifest.SourceMachine + "\\" + _loadedManifest.SourceUser +
                 ", " + _loadedManifest.CreatedUtc.ToLocalTime().ToString("g") +
                 ". Settings sets: " + _loadedManifest.Entries.Count);
             Log(_restoreLog, "Cache and folders above " + _options.AutoSelectFolderLimitMb +
@@ -401,7 +411,7 @@ public sealed class MainForm : Form
             var text = "Files/entries to copy: " + preview.FilesToCopy +
                 "\nAlready exist at target: " + preview.ExistingFiles +
                 "\nTotal size: " + FormatBytes(preview.BytesToCopy) +
-                "\nMissing from backup: " + preview.MissingPayloadFiles;
+                "\nMissing from saved copy: " + preview.MissingPayloadFiles;
             if (preview.Warnings.Count > 0)
                 text += "\n\nWarnings:\n• " + string.Join("\n• ", preview.Warnings.Distinct());
             MessageBox.Show(this, text, "Preview", MessageBoxButtons.OK,
@@ -498,9 +508,18 @@ public sealed class MainForm : Form
         }
     }
 
+    private void SavePathPreferences()
+    {
+        var preferences = _preferencesStore.Load();
+        preferences.BackupDestination = _backupDestination.Text.Trim();
+        preferences.RestorePackagePath = _packagePath.Text.Trim();
+        preferences.OverwriteExistingFiles = _overwrite.Checked;
+        _preferencesStore.Save(preferences);
+    }
+
     private List<RestoreSelection> GetRestoreSelections()
     {
-        if (_loadedManifest == null) throw new InvalidOperationException("Load a backup folder first.");
+        if (_loadedManifest == null) throw new InvalidOperationException("Open a saved settings folder first.");
         return _restoreGrid.Rows.Cast<DataGridViewRow>().Where(IsSelected)
             .Where(x => x.Tag is BackupEntry)
             .Select(x => new RestoreSelection

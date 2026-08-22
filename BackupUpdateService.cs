@@ -40,6 +40,30 @@ public sealed class BackupUpdateService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 number++;
+                if (selection.ExistingEntry == null)
+                {
+                    var sourceKey = SourceKey(selection.Source);
+                    if (!selectedKeys.Add(sourceKey))
+                        throw new InvalidOperationException("The same new settings set was selected more than once: " +
+                                                            selection.Source.Product + " — " +
+                                                            selection.Source.Category);
+                    if (manifest.Entries.Any(entry => SameIdentity(entry, selection.Source, false)))
+                        throw new InvalidOperationException(
+                            "This settings set is already represented in the backup. Load the backup again: " +
+                            selection.Source.Product + " — " + selection.Source.Category);
+
+                    progress?.Report("Adding " + number + "/" + selections.Count + ": " +
+                                     selection.Source.Product + " — " + selection.Source.Category);
+                    var newCapturePath = Path.Combine(captureRoot, number.ToString(CultureInfo.InvariantCulture));
+                    var id = Guid.NewGuid().ToString("N");
+                    var added = await BackupService.CaptureEntryAsync(selection.Source, newCapturePath, id,
+                        Path.Combine("payload", id).Replace('\\', '/'), cancellationToken);
+                    changed.Add(new ChangedEntry(-1, null, added, newCapturePath));
+                    result.AddedSets++;
+                    result.UpdatedFiles += added.FileCount;
+                    continue;
+                }
+
                 var index = FindCurrentEntry(manifest, selection.ExistingEntry);
                 var existing = manifest.Entries[index];
                 var key = EntryKey(existing);
@@ -77,24 +101,31 @@ public sealed class BackupUpdateService
 
             if (changed.Count == 0)
             {
-                progress?.Report("Nothing changed. The backup was left untouched.");
+                progress?.Report("Nothing changed. The saved copy was left untouched.");
                 return result;
             }
 
-            progress?.Report("Preparing a safe replacement copy of the backup...");
+            progress?.Report("Preparing a safe replacement...");
             await CopyDirectoryAsync(packageRoot, stagingRoot, cancellationToken);
 
             foreach (var item in changed)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var stagedPayload = BackupService.SafeChildPath(stagingRoot, item.Existing.PayloadPath);
+                var stagedPayload = BackupService.SafeChildPath(stagingRoot, item.Replacement.PayloadPath);
                 if (File.Exists(stagedPayload))
                     throw new InvalidDataException("A payload path points to a file instead of a folder: " +
-                                                   item.Existing.PayloadPath);
-                if (Directory.Exists(stagedPayload)) Directory.Delete(stagedPayload, true);
+                                                   item.Replacement.PayloadPath);
+                if (Directory.Exists(stagedPayload))
+                {
+                    if (item.Existing == null)
+                        throw new InvalidDataException("A new payload path already exists: " +
+                                                       item.Replacement.PayloadPath);
+                    Directory.Delete(stagedPayload, true);
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(stagedPayload)!);
                 Directory.Move(item.CapturePath, stagedPayload);
-                manifest.Entries[item.ManifestIndex] = item.Replacement;
+                if (item.ManifestIndex >= 0) manifest.Entries[item.ManifestIndex] = item.Replacement;
+                else manifest.Entries.Add(item.Replacement);
             }
 
             manifest.LastUpdatedUtc = DateTime.UtcNow;
@@ -128,7 +159,7 @@ public sealed class BackupUpdateService
                 throw;
             }
 
-            result.UpdatedSets = changed.Count;
+            result.UpdatedSets = changed.Count(item => item.ManifestIndex >= 0);
             try
             {
                 Directory.Delete(previousRoot, true);
@@ -139,7 +170,7 @@ public sealed class BackupUpdateService
                                         "be removed: " + previousRoot + " (" + ex.Message + ")";
             }
 
-            progress?.Report("Backup updated: " + packageRoot);
+            progress?.Report("Saved copy updated: " + packageRoot);
             return result;
         }
         finally
@@ -277,6 +308,9 @@ public sealed class BackupUpdateService
         return changed + existing.Files.Count(file => !newPaths.Contains(file.RelativePath));
     }
 
+    private static string SourceKey(SettingsLocation source) => "new\u001f" + string.Join("\u001f",
+        source.AppId, source.Version, source.Category, source.Kind, NormalizePortable(source.PortablePath));
+
     private static int FindCurrentEntry(BackupManifest manifest, BackupEntry selected)
     {
         var matches = manifest.Entries.Select((entry, index) => (entry, index))
@@ -396,7 +430,7 @@ public sealed class BackupUpdateService
 
     private sealed record ChangedEntry(
         int ManifestIndex,
-        BackupEntry Existing,
+        BackupEntry? Existing,
         BackupEntry Replacement,
         string CapturePath);
 }

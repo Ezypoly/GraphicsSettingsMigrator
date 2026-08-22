@@ -28,6 +28,7 @@ internal sealed class BackupUpdateUiController
     private readonly RestoreService _restoreService = new();
     private readonly BackupUpdateService _updateService = new();
     private readonly UserOptions _options = UserOptions.Load();
+    private readonly UserPreferencesStore _preferencesStore = new();
     private readonly TextBox _path = new() { Width = 470 };
     private readonly TextBox _log = new()
     {
@@ -41,16 +42,26 @@ internal sealed class BackupUpdateUiController
         SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = true,
         AutoGenerateColumns = false, BorderStyle = BorderStyle.Fixed3D
     };
-    private readonly Button _browse = new() { Text = "Backup...", AutoSize = true };
-    private readonly Button _load = new() { Text = "Load backup", AutoSize = true };
+    private readonly Button _browse = new() { Text = "Open...", AutoSize = true };
+    private readonly Button _load = new() { Text = "Open", AutoSize = true };
     private readonly Button _toggle = new() { Text = "Select / clear all", AutoSize = true };
     private readonly Button _update = new() { Text = "Update selected", AutoSize = true };
+    private readonly NumericUpDown _autoSelectLimit = new()
+    {
+        Minimum = 0,
+        Maximum = UserOptions.MaximumAutoSelectFolderLimitMb,
+        Increment = 100,
+        ThousandsSeparator = true,
+        Width = 90
+    };
     private BackupManifest? _manifest;
     private TabControl? _tabs;
 
     public BackupUpdateUiController(MainForm form)
     {
         _form = form;
+        _path.Text = _preferencesStore.Load().UpdateBackupPath;
+        _autoSelectLimit.Value = _options.AutoSelectFolderLimitMb;
         _tabs = Descendants<TabControl>(form).FirstOrDefault();
         if (_tabs == null) return;
         ConfigureGrid();
@@ -63,11 +74,13 @@ internal sealed class BackupUpdateUiController
         _load.Click += async (_, _) => await LoadAsync();
         _toggle.Click += (_, _) => ToggleAll();
         _update.Click += async (_, _) => await UpdateAsync();
+        _path.TextChanged += (_, _) => SaveUpdatePath();
+        _autoSelectLimit.ValueChanged += (_, _) => AutoSelectLimitChanged();
     }
 
     private TabPage BuildTab()
     {
-        var page = new TabPage("Update backup");
+        var page = new TabPage("Update saved copy");
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(10)
@@ -80,9 +93,10 @@ internal sealed class BackupUpdateUiController
         {
             AutoSize = true,
             MaximumSize = new Size(1120, 0),
-            Text = "Choose an existing backup. The left column shows its contents and availability on this PC; " +
-                   "use the right column to choose which sets to refresh. Unchanged sets are skipped by SHA-256 " +
-                   "comparison. Unchecked or unavailable contents remain untouched."
+            Text = "Open an existing saved copy. The table shows both its current contents and settings found on " +
+                   "this PC. Rows marked New can be added to the package; existing rows can be refreshed. " +
+                   "Unchanged sets are skipped by SHA-256 comparison, while unchecked or unavailable contents " +
+                   "remain untouched."
         }, 0, 0);
         var actions = new FlowLayoutPanel
         {
@@ -92,6 +106,11 @@ internal sealed class BackupUpdateUiController
         actions.Controls.Add(_browse);
         actions.Controls.Add(_load);
         actions.Controls.Add(_toggle);
+        actions.Controls.Add(new Label { Text = "  Auto-select folders up to:", AutoSize = true,
+            Padding = new Padding(8, 7, 0, 0) });
+        actions.Controls.Add(_autoSelectLimit);
+        actions.Controls.Add(new Label { Text = "MB (0 = unlimited)", AutoSize = true,
+            Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_update);
         layout.Controls.Add(actions, 0, 1);
         layout.Controls.Add(_grid, 0, 2);
@@ -102,23 +121,29 @@ internal sealed class BackupUpdateUiController
 
     private void ConfigureGrid()
     {
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "Update", Width = 70 });
+        _grid.Columns.Add(TextColumn("Product", "Application", 180));
+        _grid.Columns.Add(TextColumn("Version", "Version", 75));
+        _grid.Columns.Add(TextColumn("Category", "Settings set", 185));
+        _grid.Columns.Add(TextColumn("Size", "Size", 80));
+        _grid.Columns.Add(TextColumn("Files", "Files", 60));
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Contents", HeaderText = "Existing backup contents (read-only)", ReadOnly = true,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = 500
+            Name = "Path", HeaderText = "Path", ReadOnly = true,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, MinimumWidth = 260
         });
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            Name = "Selected", HeaderText = "Update", Width = 85
-        });
+        _grid.Columns.Add(TextColumn("Status", "Saved-copy status", 145));
         ConfigureMultiRowSelection();
     }
+
+    private static DataGridViewTextBoxColumn TextColumn(string name, string header, int width) =>
+        new() { Name = name, HeaderText = header, Width = width, ReadOnly = true };
 
     private async Task BrowseAsync()
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Select an existing backup folder containing manifest.json",
+            Description = "Open a saved settings folder containing manifest.json",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = false
         };
@@ -136,32 +161,29 @@ internal sealed class BackupUpdateUiController
         _log.Clear();
         try
         {
-            Log("Loading backup and scanning this PC...");
+            Log("Opening saved copy and scanning this PC...");
             _manifest = await _restoreService.LoadManifestAsync(package);
             var discovered = await Task.Run(_discovery.DiscoverExisting);
             _grid.Rows.Clear();
-            var available = 0;
+            var unmatched = discovered.ToList();
+            var items = new List<BackupUpdateItem>();
             foreach (var entry in _manifest.Entries)
             {
-                var source = BackupUpdateService.MatchSource(entry, discovered);
-                var item = new BackupUpdateItem { ExistingEntry = entry, Source = source };
-                var selected = source != null && ShouldAutoSelect(source);
-                var contents = FormatContents(entry, source);
-                var rowIndex = _grid.Rows.Add(contents, selected);
-                var row = _grid.Rows[rowIndex];
-                row.Tag = item;
-                if (source == null)
-                {
-                    row.Cells["Selected"].ReadOnly = true;
-                    row.DefaultCellStyle.ForeColor = Color.FromArgb(165, 168, 175);
-                }
-                else
-                {
-                    available++;
-                    if (!selected) row.DefaultCellStyle.ForeColor = Color.FromArgb(165, 168, 175);
-                }
+                var source = BackupUpdateService.MatchSource(entry, unmatched);
+                if (source != null) unmatched.Remove(source);
+                items.Add(new BackupUpdateItem { ExistingEntry = entry, Source = source });
             }
-            Log("Backup contents: " + _manifest.Entries.Count + ". Available to update: " + available + ".");
+            items.AddRange(unmatched.Select(source => new BackupUpdateItem { Source = source }));
+            foreach (var item in items
+                         .OrderBy(ItemProduct, StringComparer.CurrentCultureIgnoreCase)
+                         .ThenByDescending(ItemVersion, StringComparer.CurrentCultureIgnoreCase)
+                         .ThenBy(ItemCategory, StringComparer.CurrentCultureIgnoreCase))
+                AddUpdateRow(item);
+
+            var available = items.Count(item => item.Source != null && item.ExistingEntry != null);
+            var newSets = items.Count(item => item.Source != null && item.ExistingEntry == null);
+            Log("Saved contents: " + _manifest.Entries.Count + ". Available to refresh: " + available +
+                ". New settings sets found: " + newSets + ".");
             Log("Cache and folders above " + _options.AutoSelectFolderLimitMb +
                 " MB require manual selection (0 means unlimited).");
         }
@@ -178,12 +200,50 @@ internal sealed class BackupUpdateUiController
         }
     }
 
+    private void AddUpdateRow(BackupUpdateItem item)
+    {
+        var source = item.Source;
+        var entry = item.ExistingEntry;
+        var selected = source != null && ShouldAutoSelect(source);
+        var kind = source?.Kind ?? entry!.Kind;
+        var size = source?.SizeBytes ?? entry!.SizeBytes;
+        var files = kind == SourceKind.Registry
+            ? "registry"
+            : (source?.FileCount ?? entry!.FileCount).ToString("N0", CultureInfo.CurrentCulture);
+        var status = source == null ? "Not found — kept" : entry == null ? "New — add" : "Saved";
+        var rowIndex = _grid.Rows.Add(selected,
+            source?.Product ?? entry!.Product,
+            source?.Version ?? entry!.SourceVersion,
+            source?.Category ?? entry!.Category,
+            FormatBytes(size), files,
+            source?.SourcePath ?? entry!.OriginalPath,
+            status);
+        var row = _grid.Rows[rowIndex];
+        row.Tag = item;
+        if (source == null)
+        {
+            row.Cells["Selected"].ReadOnly = true;
+            row.DefaultCellStyle.ForeColor = Color.FromArgb(165, 168, 175);
+        }
+        else if (!selected)
+            row.DefaultCellStyle.ForeColor = Color.FromArgb(165, 168, 175);
+    }
+
+    private static string ItemProduct(BackupUpdateItem item) =>
+        item.Source?.Product ?? item.ExistingEntry?.Product ?? "";
+
+    private static string ItemVersion(BackupUpdateItem item) =>
+        item.Source?.Version ?? item.ExistingEntry?.SourceVersion ?? "";
+
+    private static string ItemCategory(BackupUpdateItem item) =>
+        item.Source?.Category ?? item.ExistingEntry?.Category ?? "";
+
     private async Task UpdateAsync()
     {
         _grid.EndEdit();
         if (_manifest == null)
         {
-            MessageBox.Show(_form, "Load an existing backup first.", _form.Text,
+            MessageBox.Show(_form, "Open an existing saved settings folder first.", _form.Text,
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -200,7 +260,7 @@ internal sealed class BackupUpdateUiController
             }).ToList();
         if (selections.Count == 0)
         {
-            MessageBox.Show(_form, "Select at least one available backup content item.", _form.Text,
+            MessageBox.Show(_form, "Select at least one available settings item.", _form.Text,
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -210,17 +270,20 @@ internal sealed class BackupUpdateUiController
         {
             var runningAnswer = MessageBox.Show(_form,
                 "These applications are currently running:\n\n" + string.Join("\n", running) +
-                "\n\nClose them first for the most up-to-date backup. Continue anyway?",
+                "\n\nClose them first for the most up-to-date saved copy. Continue anyway?",
                 "Applications are running", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2);
             if (runningAnswer != DialogResult.Yes) return;
         }
 
+        var addCount = selections.Count(selection => selection.ExistingEntry == null);
+        var refreshCount = selections.Count - addCount;
         var answer = MessageBox.Show(_form,
-            "Update " + selections.Count + " selected settings set(s) in this backup?\n\n" +
+            "Refresh " + refreshCount + " and add " + addCount + " selected settings set(s)?\n\n" +
             "Only changed sets will be replaced. SHA-256-identical sets will be skipped. " +
-            "Unchecked and unavailable contents will remain untouched.\n\n" + _path.Text.Trim(),
-            "Confirm backup update", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            "Rows marked New will be added. Unchecked and unavailable contents will remain untouched.\n\n" +
+            _path.Text.Trim(),
+            "Confirm saved-copy update", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button2);
         if (answer != DialogResult.Yes) return;
 
@@ -229,10 +292,11 @@ internal sealed class BackupUpdateUiController
         {
             var progress = new Progress<string>(Log);
             var result = await _updateService.UpdateAsync(_path.Text.Trim(), selections, progress);
-            var message = result.UpdatedSets == 0
-                ? "No changes were found. The backup was left untouched.\n\nUnchanged sets skipped: " +
+            var message = result.UpdatedSets == 0 && result.AddedSets == 0
+                ? "No changes were found. The saved copy was left untouched.\n\nUnchanged sets skipped: " +
                   result.SkippedUnchangedSets
-                : "Backup updated.\n\nUpdated sets: " + result.UpdatedSets +
+                : "Saved copy updated.\n\nAdded sets: " + result.AddedSets +
+                  "\nUpdated sets: " + result.UpdatedSets +
                   "\nChanged/removed files: " + result.UpdatedFiles +
                   "\nUnchanged sets skipped: " + result.SkippedUnchangedSets;
             if (!string.IsNullOrWhiteSpace(result.CleanupWarning))
@@ -282,21 +346,6 @@ internal sealed class BackupUpdateUiController
     private bool ShouldAutoSelect(SettingsLocation source) => source.Recommended &&
         !IsCache(source.Category, source.Notes) &&
         !(source.Kind == SourceKind.Directory && source.SizeBytes > _options.AutoSelectFolderLimitBytes);
-
-    private static string FormatContents(BackupEntry entry, SettingsLocation? source)
-    {
-        var stored = entry.Kind == SourceKind.Registry
-            ? "registry"
-            : entry.FileCount.ToString("N0", CultureInfo.CurrentCulture) + " files, " + FormatBytes(entry.SizeBytes);
-        var availability = source == null
-            ? "not found on this PC"
-            : "available now: " + (source.Kind == SourceKind.Registry
-                ? "registry"
-                : source.FileCount.ToString("N0", CultureInfo.CurrentCulture) + " files, " +
-                  FormatBytes(source.SizeBytes));
-        return entry.Product + " " + entry.SourceVersion + " — " + entry.Category +
-               "  |  stored: " + stored + "  |  " + availability;
-    }
 
     private void ConfigureMultiRowSelection()
     {
@@ -348,6 +397,32 @@ internal sealed class BackupUpdateUiController
         };
     }
 
+    private void AutoSelectLimitChanged()
+    {
+        _options.AutoSelectFolderLimitMb = (int)_autoSelectLimit.Value;
+        try { _options.Save(); }
+        catch (Exception ex) { Log("Could not save the auto-selection limit: " + ex.Message); }
+
+        foreach (DataGridViewRow row in _grid.Rows)
+        {
+            if (row.Tag is not BackupUpdateItem { Source: { } source }) continue;
+            row.Cells["Selected"].Value = ShouldAutoSelect(source);
+            row.DefaultCellStyle.ForeColor = ShouldAutoSelect(source)
+                ? Color.Empty
+                : Color.FromArgb(165, 168, 175);
+        }
+        _grid.Invalidate();
+        Log("Folder auto-selection limit: " + _options.AutoSelectFolderLimitMb +
+            " MB (0 means unlimited). New and existing rows were refreshed.");
+    }
+
+    private void SaveUpdatePath()
+    {
+        var preferences = _preferencesStore.Load();
+        preferences.UpdateBackupPath = _path.Text.Trim();
+        _preferencesStore.Save(preferences);
+    }
+
     private void SetBusy(bool busy)
     {
         _form.UseWaitCursor = busy;
@@ -355,6 +430,7 @@ internal sealed class BackupUpdateUiController
         _load.Enabled = !busy;
         _toggle.Enabled = !busy;
         _update.Enabled = !busy;
+        _autoSelectLimit.Enabled = !busy;
     }
 
     private void Log(string message) =>

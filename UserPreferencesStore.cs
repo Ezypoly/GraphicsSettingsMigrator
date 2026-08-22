@@ -5,6 +5,8 @@ namespace GraphicsSettingsMigrator;
 internal sealed class UserPreferences
 {
     public string BackupDestination { get; set; } = "";
+    public string RestorePackagePath { get; set; } = "";
+    public string UpdateBackupPath { get; set; } = "";
     public bool OverwriteExistingFiles { get; set; } = true;
     public Dictionary<string, bool> BackupSelections { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);

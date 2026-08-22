@@ -77,18 +77,19 @@ public sealed class BackupFile
 
 public sealed class BackupUpdateItem
 {
-    public required BackupEntry ExistingEntry { get; init; }
+    public BackupEntry? ExistingEntry { get; init; }
     public SettingsLocation? Source { get; init; }
 }
 
 public sealed class BackupUpdateSelection
 {
-    public required BackupEntry ExistingEntry { get; init; }
+    public BackupEntry? ExistingEntry { get; init; }
     public required SettingsLocation Source { get; init; }
 }
 
 public sealed class BackupUpdateResult
 {
+    public int AddedSets { get; set; }
     public string PackagePath { get; set; } = "";
     public int UpdatedSets { get; set; }
     public int SkippedUnchangedSets { get; set; }
