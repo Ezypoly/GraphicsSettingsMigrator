@@ -75,6 +75,19 @@ See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-speci
   and libraries stored outside the usual preferences folder are included where
   their locations are known.
 
+## Updates
+
+Version 1.3.0 and later can update themselves from the repository's latest
+GitHub Release. Use **Check for updates** on the Backup tab. The updater:
+
+- downloads only `GraphicsSettingsMigrator-win-x64.zip` from this repository;
+- verifies the exact asset size and GitHub-provided SHA-256 digest;
+- closes the running application before replacing files;
+- copies release files into the current portable folder without deleting other files;
+- restarts the updated application and removes its temporary download.
+
+Updating an installation in a protected folder may show a Windows UAC prompt.
+
 ## Rollback
 
 Every restore creates a rollback manifest. The Rollback tab can restore overwritten files and registry settings and remove files created by that restore. Files changed again after the restore are skipped to protect newer work. Rollbacks created by older versions remain available for manual recovery.

@@ -40,7 +40,7 @@ public sealed class TargetLocation
 public sealed class BackupManifest
 {
     public int FormatVersion { get; set; } = 1;
-    public string ToolVersion { get; set; } = "1.2.0";
+    public string ToolVersion { get; set; } = UpdateService.CurrentVersionText;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public string SourceMachine { get; set; } = Environment.MachineName;
     public string SourceUser { get; set; } = Environment.UserName;
