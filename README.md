@@ -126,6 +126,9 @@ saved copies. A **Saved copy folder** is one specific child folder containing
 - Save destination, last opened restore folder, last opened update folder, overwrite
   choice, size limit, and row selections are stored under `%LOCALAPPDATA%` and
   survive portable application updates.
+- **Appearance** switches instantly between **Classic dark** (the original dark
+  interface) and **Console**; both keep the native Windows frame dark. The choice
+  is remembered between launches and portable updates.
 
 ## Removing old settings
 
