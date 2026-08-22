@@ -77,7 +77,8 @@ See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-speci
 
 ## Selection and cache handling
 
-- Use Ctrl or Shift to highlight multiple rows, then press Space to toggle all
+- Use Ctrl or Shift to highlight multiple rows, then click any highlighted
+  checkbox or press Space to toggle all
   of their checkboxes.
 - **Select / clear all** selects normal settings but deliberately skips every
   cache-containing set. Cache rows can only be enabled manually.

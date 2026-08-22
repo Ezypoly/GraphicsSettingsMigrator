@@ -536,6 +536,46 @@ public sealed class MainForm : Form
 
     private static void ConfigureMultiRowSelection(DataGridView grid)
     {
+        List<DataGridViewRow>? clickRows = null;
+        var applyingGroupValue = false;
+        var selectedColumn = grid.Columns["Selected"].Index;
+
+        grid.CellMouseDown += (_, e) =>
+        {
+            clickRows = null;
+            if (e.Button != MouseButtons.Left || e.RowIndex < 0 || e.ColumnIndex != selectedColumn) return;
+            var clickedRow = grid.Rows[e.RowIndex];
+            var selectedRows = grid.SelectedRows.Cast<DataGridViewRow>().ToList();
+            if (selectedRows.Count > 1 && selectedRows.Contains(clickedRow)) clickRows = selectedRows;
+        };
+
+        grid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (grid.IsCurrentCellDirty && grid.CurrentCell?.ColumnIndex == selectedColumn)
+                grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+
+        grid.CellValueChanged += (_, e) =>
+        {
+            if (applyingGroupValue || e.RowIndex < 0 || e.ColumnIndex != selectedColumn) return;
+            var rows = clickRows;
+            clickRows = null;
+            if (rows is not { Count: > 1 } || !rows.Contains(grid.Rows[e.RowIndex])) return;
+
+            var value = IsSelected(grid.Rows[e.RowIndex]);
+            applyingGroupValue = true;
+            try
+            {
+                foreach (var row in rows.Where(row => !row.IsNewRow))
+                    row.Cells["Selected"].Value = value;
+            }
+            finally
+            {
+                applyingGroupValue = false;
+            }
+            grid.InvalidateColumn(selectedColumn);
+        };
+
         grid.KeyDown += (_, e) =>
         {
             if (e.KeyCode != Keys.Space || grid.SelectedRows.Count == 0) return;
