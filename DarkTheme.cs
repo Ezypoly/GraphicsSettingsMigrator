@@ -53,6 +53,11 @@ internal static class DarkTheme
                 box.ForeColor = Text;
                 box.BorderStyle = BorderStyle.FixedSingle;
                 break;
+            case NumericUpDown numeric:
+                numeric.BackColor = Surface;
+                numeric.ForeColor = Text;
+                numeric.BorderStyle = BorderStyle.FixedSingle;
+                break;
             case Button button:
                 button.BackColor = Color.FromArgb(47, 49, 54);
                 button.ForeColor = Text;

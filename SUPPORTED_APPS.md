@@ -23,6 +23,7 @@ uses installed-version rules to map a backup to a newer version.
 - Blender
 - Autodesk Maya
 - Autodesk 3ds Max
+- Autodesk shared ApplicationPlugins packages
 - Cinema 4D
 - Houdini
 - Maxon ZBrush
@@ -31,6 +32,7 @@ uses installed-version rules to map a backup to a newer version.
 - Grasshopper
 - SketchUp
 - Nuke
+- OpenFX shared plug-ins
 - Mari
 - Modo
 - Marmoset Toolbag
@@ -62,15 +64,21 @@ uses installed-version rules to map a backup to a newer version.
 - The scanner includes custom scripts, plug-ins, extensions, presets, brushes,
   materials, packages, and libraries when applications store them outside the
   normal user-settings profile.
-- Installation-level content is included for Photoshop, Illustrator, and After
-  Effects. Restoring it under Program Files or Common Files may require running
-  the utility as administrator.
+- Installation-level or shared plug-in locations are included for Photoshop,
+  Illustrator, After Effects, ZBrush, Autodesk applications, Cinema 4D,
+  Nuke/OpenFX, paint.net, and Unreal Engine. Environment-configured paths are
+  also detected for Maya, Houdini, Cinema 4D, Nuke, OpenFX, Blender, Mari, and
+  Autodesk ApplicationPlugins.
+- Restoring content under Program Files, ProgramData, or Common Files may require
+  running the utility as administrator.
 - Native binary plug-ins can be tied to a specific application version. Review
   the editable restore target and the Preview before copying them to a new version.
 - Project files, renders, autosaves, caches, crash dumps, and licensing data
   are intentionally excluded where their locations are known.
-- Unreal Engine project-specific settings remain inside each project's
-  Saved\Config directory and are not scanned globally.
+- Unreal Engine project settings remain inside each project's `Saved\Config`;
+  Unity, Godot, and Unreal project plug-ins also remain project-scoped. The
+  utility does not search every project on every drive. Unreal Engine/Fab
+  plug-ins installed into an engine version are scanned.
 - Some programs must be launched once before their user profile directory
   exists.
 - Cross-version migration of presets and text configuration is generally

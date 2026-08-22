@@ -8,6 +8,7 @@ public sealed class MainForm : Form
     private readonly BackupService _backupService = new();
     private readonly RestoreService _restoreService = new();
     private readonly RemovalService _removalService = new();
+    private readonly UserOptions _options = UserOptions.Load();
     private readonly DataGridView _backupGrid = CreateGrid();
     private readonly DataGridView _restoreGrid = CreateGrid();
     private readonly TextBox _backupDestination = new();
@@ -23,6 +24,14 @@ public sealed class MainForm : Form
     private readonly Button _toggleBackupButton = new() { Text = "Select / clear all", AutoSize = true };
     private readonly Button _toggleRestoreButton = new() { Text = "Select / clear all", AutoSize = true };
     private readonly Button _removeButton = new() { Text = "Remove selected...", AutoSize = true };
+    private readonly NumericUpDown _autoSelectLimit = new()
+    {
+        Minimum = 0,
+        Maximum = UserOptions.MaximumAutoSelectFolderLimitMb,
+        Increment = 100,
+        ThousandsSeparator = true,
+        Width = 90
+    };
     private readonly CheckBox _overwrite = new()
     {
         Text = "Overwrite existing files (with rollback backup)",
@@ -41,6 +50,7 @@ public sealed class MainForm : Form
         Font = new Font("Segoe UI", 9F);
         _backupDestination.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GraphicsSettingsBackups");
+        _autoSelectLimit.Value = _options.AutoSelectFolderLimitMb;
         ConfigureBackupGrid();
         ConfigureRestoreGrid();
         ConfigureMultiRowSelection(_backupGrid);
@@ -60,6 +70,7 @@ public sealed class MainForm : Form
         _removeButton.Click += async (_, _) => await RemoveSelectedAsync();
         _toggleRestoreButton.Click += (_, _) => ToggleAll(_restoreGrid);
         Shown += async (_, _) => await ScanAsync();
+        _autoSelectLimit.ValueChanged += (_, _) => AutoSelectLimitChanged();
     }
 
     private TabPage BuildBackupTab()
@@ -71,22 +82,27 @@ public sealed class MainForm : Form
             AutoSize = true,
             MaximumSize = new Size(1120, 0),
             Text = "Find existing settings, select the required sets, and create a portable backup folder. " +
-                   "ZBrush QuickSave and Temp data are not included. " +
-                   "Use Ctrl/Shift to select rows; press Space to toggle their checkboxes."
+                   "ZBrush QuickSave and Temp data are not included. Large folders above the saved auto-select " +
+                   "limit stay visible but unchecked. Use Ctrl/Shift to select rows; press Space to toggle " +
+                   "their checkboxes."
         };
         var actions = new FlowLayoutPanel
         {
-            AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 6, 0, 6)
+            AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(0, 6, 0, 6)
         };
         var browse = new Button { Text = "Browse…", AutoSize = true };
         browse.Click += (_, _) => BrowseInto(_backupDestination, "Choose where to save the backup");
-        _backupDestination.Width = 470;
+        _backupDestination.Width = 390;
         actions.Controls.Add(_removeButton);
         actions.Controls.Add(_toggleBackupButton);
         actions.Controls.Add(_scanButton);
         actions.Controls.Add(new Label { Text = "  Save to:", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_backupDestination);
         actions.Controls.Add(browse);
+        actions.Controls.Add(new Label { Text = "  Auto-select folders up to:", AutoSize = true,
+            Padding = new Padding(8, 7, 0, 0) });
+        actions.Controls.Add(_autoSelectLimit);
+        actions.Controls.Add(new Label { Text = "MB (0 = unlimited)", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
         actions.Controls.Add(_backupButton);
         actions.Controls.Add(new Label { Text = "  Version " + UpdateService.CurrentVersionText,
             AutoSize = true, Padding = new Padding(8, 7, 0, 0) });
@@ -197,17 +213,20 @@ public sealed class MainForm : Form
             _backupGrid.Rows.Clear();
             foreach (var location in locations)
             {
-                var rowIndex = _backupGrid.Rows.Add(location.Recommended && !IsCacheSet(location.Category, location.Notes), location.Product, location.Version,
+                var autoSelected = ShouldAutoSelect(location);
+                var rowIndex = _backupGrid.Rows.Add(autoSelected, location.Product, location.Version,
                     location.Category, FormatBytes(location.SizeBytes),
                     location.Kind == SourceKind.Registry ? "registry" : location.FileCount,
-                    location.SourcePath, location.Notes);
+                    location.SourcePath, DisplayNotes(location));
                 var row = _backupGrid.Rows[rowIndex];
                 row.Tag = location;
-                if (!location.Recommended) row.DefaultCellStyle.ForeColor = Color.FromArgb(165, 168, 175);
+                UpdateBackupRowAppearance(row, location);
             }
             Log(_backupLog, "Settings sets found: " + locations.Count +
-                            ". Optional or cache-containing sets are shown in gray.");
+                            ". Optional, cache-containing, or size-limited sets are shown in gray.");
             Log(_backupLog, "Supported application catalog: " + (ExtendedDiscovery.SupportedProducts.Length + 12) + " products.");
+            Log(_backupLog, "Folder auto-selection limit: " + _options.AutoSelectFolderLimitMb +
+                            " MB (0 means unlimited).");
         }
         catch (Exception ex) { ShowError(ex); Log(_backupLog, ex.Message); }
         finally { SetBusy(false); }
@@ -323,7 +342,7 @@ public sealed class MainForm : Form
             _restoreGrid.Rows.Clear();
             foreach (var entry in _loadedManifest.Entries)
             {
-                var rowIndex = _restoreGrid.Rows.Add(!IsCacheSet(entry.Category, entry.Notes), entry.Product, entry.SourceVersion, entry.Category,
+                var rowIndex = _restoreGrid.Rows.Add(ShouldAutoSelect(entry), entry.Product, entry.SourceVersion, entry.Category,
                     FormatBytes(entry.SizeBytes), "", "");
                 _restoreGrid.Rows[rowIndex].Tag = entry;
             }
@@ -331,6 +350,8 @@ public sealed class MainForm : Form
             Log(_restoreLog, "Backup: " + _loadedManifest.SourceMachine + "\\" + _loadedManifest.SourceUser +
                 ", " + _loadedManifest.CreatedUtc.ToLocalTime().ToString("g") +
                 ". Settings sets: " + _loadedManifest.Entries.Count);
+            Log(_restoreLog, "Cache and folders above " + _options.AutoSelectFolderLimitMb +
+                             " MB require manual selection (0 means unlimited).");
         }
         catch (Exception ex) { ShowError(ex); Log(_restoreLog, ex.Message); }
         finally { SetBusy(false); }
@@ -508,6 +529,7 @@ public sealed class MainForm : Form
         _scanButton.Enabled = !busy;
         _removeButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
+        _autoSelectLimit.Enabled = !busy;
         _loadButton.Enabled = !busy;
         _toggleBackupButton.Enabled = !busy;
         _toggleRestoreButton.Enabled = !busy;
@@ -516,12 +538,12 @@ public sealed class MainForm : Form
         _restoreButton.Enabled = !busy;
     }
 
-    private static void ToggleAll(DataGridView grid)
+    private void ToggleAll(DataGridView grid)
     {
         grid.EndEdit();
         var rows = grid.Rows.Cast<DataGridViewRow>().ToList();
         if (rows.Count == 0) return;
-        var automaticRows = rows.Where(row => !IsCacheRow(row)).ToList();
+        var automaticRows = rows.Where(IsAutomaticallySelectableRow).ToList();
         var selectAll = automaticRows.Any(row => !IsSelected(row));
         if (selectAll)
         {
@@ -601,6 +623,67 @@ public sealed class MainForm : Form
         BackupEntry entry => IsCacheSet(entry.Category, entry.Notes),
         _ => false
     };
+
+    private void AutoSelectLimitChanged()
+    {
+        _options.AutoSelectFolderLimitMb = (int)_autoSelectLimit.Value;
+        try { _options.Save(); }
+        catch (Exception ex) { Log(_backupLog, "Could not save the auto-selection limit: " + ex.Message); }
+
+        foreach (DataGridViewRow row in _backupGrid.Rows)
+        {
+            if (row.Tag is not SettingsLocation location || IsCacheSet(location.Category, location.Notes))
+                continue;
+            row.Cells["Selected"].Value = ShouldAutoSelect(location);
+            row.Cells["Notes"].Value = DisplayNotes(location);
+            UpdateBackupRowAppearance(row, location);
+        }
+        foreach (DataGridViewRow row in _restoreGrid.Rows)
+        {
+            if (row.Tag is not BackupEntry entry || IsCacheSet(entry.Category, entry.Notes)) continue;
+            row.Cells["Selected"].Value = ShouldAutoSelect(entry);
+        }
+        _backupGrid.Invalidate();
+        _restoreGrid.Invalidate();
+    }
+
+    private bool ShouldAutoSelect(SettingsLocation location) =>
+        location.Recommended && !IsCacheSet(location.Category, location.Notes) &&
+        !IsOverAutoSelectLimit(location.Kind, location.SizeBytes);
+
+    private bool ShouldAutoSelect(BackupEntry entry) =>
+        !IsCacheSet(entry.Category, entry.Notes) &&
+        !IsOverAutoSelectLimit(entry.Kind, entry.SizeBytes);
+
+    private bool IsAutomaticallySelectableRow(DataGridViewRow row)
+    {
+        if (IsCacheRow(row)) return false;
+        return row.Tag switch
+        {
+            SettingsLocation location => !IsOverAutoSelectLimit(location.Kind, location.SizeBytes),
+            BackupEntry entry => !IsOverAutoSelectLimit(entry.Kind, entry.SizeBytes),
+            _ => true
+        };
+    }
+
+    private bool IsOverAutoSelectLimit(SourceKind kind, long sizeBytes) =>
+        kind == SourceKind.Directory && sizeBytes > _options.AutoSelectFolderLimitBytes;
+
+    private string DisplayNotes(SettingsLocation location)
+    {
+        if (!IsOverAutoSelectLimit(location.Kind, location.SizeBytes)) return location.Notes;
+        var suffix = "Auto-selection skipped: folder exceeds " +
+                     _options.AutoSelectFolderLimitMb.ToString("N0", CultureInfo.CurrentCulture) + " MB.";
+        return string.IsNullOrWhiteSpace(location.Notes) ? suffix : location.Notes + " " + suffix;
+    }
+
+    private void UpdateBackupRowAppearance(DataGridViewRow row, SettingsLocation location)
+    {
+        row.DefaultCellStyle.ForeColor = ShouldAutoSelect(location)
+            ? Color.Empty
+            : Color.FromArgb(165, 168, 175);
+    }
+
 
     private static bool IsCacheSet(string category, string notes) =>
         category.Contains("cache", StringComparison.OrdinalIgnoreCase) ||

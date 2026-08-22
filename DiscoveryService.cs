@@ -26,6 +26,7 @@ public sealed class DiscoveryService
         DiscoverPlasticity(result);
         ExtendedDiscovery.AddExisting(result, MakePortablePath);
         CustomContentDiscovery.AddExisting(result, MakePortablePath);
+        PluginDiscovery.AddExisting(result, MakePortablePath);
         return result
             .GroupBy(x => x.Kind + "|" + x.SourcePath, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.First())
@@ -103,6 +104,7 @@ public sealed class DiscoveryService
             Path.Combine(_profile, ".plasticity"));
 
         ExtendedDiscovery.AddTargets(targets);
+        PluginDiscovery.AddTargets(targets);
         CustomContentDiscovery.AddTargets(targets);
         AddTarget(targets, "3dcoat", "3DCoat", "shared", "Option presets",
             Path.Combine(_documents, "3DCoat", "data", "OptionsPresets"));
