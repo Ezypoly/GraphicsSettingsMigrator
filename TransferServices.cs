@@ -45,57 +45,9 @@ public sealed class BackupService
             progress?.Report("Copying " + index + "/" + selected.Count + ": " +
                              location.Product + " — " + location.Category);
 
-            var entry = new BackupEntry
-            {
-                Id = location.Id,
-                AppId = location.AppId,
-                Product = location.Product,
-                SourceVersion = location.Version,
-                Category = location.Category,
-                Kind = location.Kind,
-                OriginalPath = location.SourcePath,
-                PortablePath = location.PortablePath,
-                PayloadPath = Path.Combine("payload", location.Id).Replace('\\', '/'),
-                Notes = location.Notes
-            };
-
             var entryPayload = Path.Combine(payloadRoot, location.Id);
-            Directory.CreateDirectory(entryPayload);
-
-            if (location.Kind == SourceKind.Registry)
-            {
-                var snapshot = RegistryTransfer.Capture(location.SourcePath)
-                    ?? throw new InvalidOperationException("Could not read " + location.SourcePath);
-                var registryFile = Path.Combine(entryPayload, "registry.json");
-                await File.WriteAllTextAsync(registryFile,
-                    JsonSerializer.Serialize(snapshot, JsonSupport.Options), cancellationToken);
-                var info = new FileInfo(registryFile);
-                entry.Files.Add(new BackupFile
-                {
-                    RelativePath = "registry.json",
-                    SizeBytes = info.Length,
-                    LastWriteUtc = info.LastWriteTimeUtc,
-                    Sha256 = await HashFileAsync(registryFile, cancellationToken)
-                });
-            }
-            else if (location.Kind == SourceKind.File)
-            {
-                await CopyOneToBackupAsync(location.SourcePath, entryPayload, Path.GetFileName(location.SourcePath),
-                    entry, cancellationToken);
-            }
-            else
-            {
-                foreach (var sourceFile in SafeEnumerateFiles(location.SourcePath))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var relative = Path.GetRelativePath(location.SourcePath, sourceFile);
-                    if (DiscoveryService.IsExcluded(relative, location.ExcludedPrefixes)) continue;
-                    await CopyOneToBackupAsync(sourceFile, entryPayload, relative, entry, cancellationToken);
-                }
-            }
-
-            entry.FileCount = entry.Files.Count;
-            entry.SizeBytes = entry.Files.Sum(x => x.SizeBytes);
+            var entry = await CaptureEntryAsync(location, entryPayload, location.Id,
+                Path.Combine("payload", location.Id).Replace('\\', '/'), cancellationToken);
             manifest.Entries.Add(entry);
         }
 
@@ -104,6 +56,65 @@ public sealed class BackupService
             JsonSerializer.Serialize(manifest, JsonSupport.Options), cancellationToken);
         progress?.Report("Done: " + packageRoot);
         return packageRoot;
+    }
+
+    internal static async Task<BackupEntry> CaptureEntryAsync(
+        SettingsLocation location,
+        string entryPayload,
+        string entryId,
+        string payloadPath,
+        CancellationToken cancellationToken)
+    {
+        var entry = new BackupEntry
+        {
+            Id = entryId,
+            AppId = location.AppId,
+            Product = location.Product,
+            SourceVersion = location.Version,
+            Category = location.Category,
+            Kind = location.Kind,
+            OriginalPath = location.SourcePath,
+            PortablePath = location.PortablePath,
+            PayloadPath = payloadPath.Replace('\\', '/'),
+            Notes = location.Notes
+        };
+        Directory.CreateDirectory(entryPayload);
+
+        if (location.Kind == SourceKind.Registry)
+        {
+            var snapshot = RegistryTransfer.Capture(location.SourcePath)
+                ?? throw new InvalidOperationException("Could not read " + location.SourcePath);
+            var registryFile = Path.Combine(entryPayload, "registry.json");
+            await File.WriteAllTextAsync(registryFile,
+                JsonSerializer.Serialize(snapshot, JsonSupport.Options), cancellationToken);
+            var info = new FileInfo(registryFile);
+            entry.Files.Add(new BackupFile
+            {
+                RelativePath = "registry.json",
+                SizeBytes = info.Length,
+                LastWriteUtc = info.LastWriteTimeUtc,
+                Sha256 = await HashFileAsync(registryFile, cancellationToken)
+            });
+        }
+        else if (location.Kind == SourceKind.File)
+        {
+            await CopyOneToBackupAsync(location.SourcePath, entryPayload, Path.GetFileName(location.SourcePath),
+                entry, cancellationToken);
+        }
+        else
+        {
+            foreach (var sourceFile in SafeEnumerateFiles(location.SourcePath))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var relative = Path.GetRelativePath(location.SourcePath, sourceFile);
+                if (DiscoveryService.IsExcluded(relative, location.ExcludedPrefixes)) continue;
+                await CopyOneToBackupAsync(sourceFile, entryPayload, relative, entry, cancellationToken);
+            }
+        }
+
+        entry.FileCount = entry.Files.Count;
+        entry.SizeBytes = entry.Files.Sum(x => x.SizeBytes);
+        return entry;
     }
 
     private static async Task CopyOneToBackupAsync(string sourceFile, string payloadRoot, string relative,

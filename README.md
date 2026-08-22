@@ -87,6 +87,22 @@ because they may require administrator rights and may not work across versions.
 Project plug-ins belonging to Unity, Godot, or Unreal projects remain inside
 those projects and are not discovered by a global disk search.
 
+## Updating an existing backup
+
+Open **Update backup**, choose a folder containing `manifest.json`, and the app
+will show the existing package contents in a read-only left column. The
+**Update** column is enabled only where the matching settings set exists on the
+current PC. Select the sets to refresh and choose **Update selected**.
+
+- Every selected set is compared by SHA-256, not only by file date or size.
+- If all files are identical, that set is skipped and the backup is not rewritten.
+- Unchecked sets and contents not found on the current PC remain untouched.
+- Files removed from a selected source are removed from that set in the backup.
+- The original package is replaced only after a complete staging copy and new
+  manifest are ready; a failed update moves the original folder back.
+- Cache and oversized folders remain manual selections, just like on the Backup tab.
+- Ctrl/Shift multi-selection and Space or group checkbox toggling work on this tab too.
+
 ## Selection and cache handling
 
 - Use Ctrl or Shift to highlight multiple rows, then click any highlighted
