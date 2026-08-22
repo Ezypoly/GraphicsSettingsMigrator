@@ -44,6 +44,9 @@ public sealed class BackupManifest
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public string SourceMachine { get; set; } = Environment.MachineName;
     public string SourceUser { get; set; } = Environment.UserName;
+    public DateTime? LastUpdatedUtc { get; set; }
+    public string LastUpdatedMachine { get; set; } = "";
+    public string LastUpdatedUser { get; set; } = "";
     public List<BackupEntry> Entries { get; set; } = [];
 }
 
@@ -70,6 +73,27 @@ public sealed class BackupFile
     public long SizeBytes { get; set; }
     public DateTime LastWriteUtc { get; set; }
     public string Sha256 { get; set; } = "";
+}
+
+public sealed class BackupUpdateItem
+{
+    public required BackupEntry ExistingEntry { get; init; }
+    public SettingsLocation? Source { get; init; }
+}
+
+public sealed class BackupUpdateSelection
+{
+    public required BackupEntry ExistingEntry { get; init; }
+    public required SettingsLocation Source { get; init; }
+}
+
+public sealed class BackupUpdateResult
+{
+    public string PackagePath { get; set; } = "";
+    public int UpdatedSets { get; set; }
+    public int SkippedUnchangedSets { get; set; }
+    public int UpdatedFiles { get; set; }
+    public string CleanupWarning { get; set; } = "";
 }
 
 public sealed class RegistrySnapshot

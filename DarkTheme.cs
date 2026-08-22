@@ -29,6 +29,8 @@ internal static class DarkTheme
         };
     }
 
+    public static void Apply(Control control) => ApplyRecursive(control);
+
     private static void ApplyRecursive(Control control)
     {
         control.ForeColor = Text;
