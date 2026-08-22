@@ -75,11 +75,25 @@ See [SUPPORTED_APPS.md](SUPPORTED_APPS.md) for scope notes and application-speci
   and libraries stored outside the usual preferences folder are included where
   their locations are known.
 
+## Plug-in discovery
+
+In addition to plug-ins already contained in normal application profiles, the
+scanner checks install-level, shared, and environment-configured locations for
+ZBrush, Autodesk/Maya/3ds Max, Cinema 4D, Houdini, Nuke/OpenFX, Blender, Mari,
+paint.net, Capture One, and Unreal Engine. Adobe installation plug-ins and
+CEP/UXP extensions remain supported. Native binaries are shown separately
+because they may require administrator rights and may not work across versions.
+
+Project plug-ins belonging to Unity, Godot, or Unreal projects remain inside
+those projects and are not discovered by a global disk search.
+
 ## Selection and cache handling
 
 - Use Ctrl or Shift to highlight multiple rows, then click any highlighted
-  checkbox or press Space to toggle all
-  of their checkboxes.
+  checkbox or press Space to toggle all of their checkboxes.
+- **Auto-select folders up to** is saved between runs and defaults to 500 MB.
+  Larger folders remain visible but unchecked; set it to `0` for no size limit.
+  **Select / clear all** also respects this limit.
 - **Select / clear all** selects normal settings but deliberately skips every
   cache-containing set. Cache rows can only be enabled manually.
 - Choosing a backup folder with **Backup...** on the Restore tab loads its
